@@ -1,12 +1,16 @@
 "use client";
 
-import React from "react";
+// This is a fallback for framer-motion to make it more maintainable
+// when used with TypeScript and for components that don't rely on animations.
 
-// This is a fallback component for framer-motion while waiting for React 19 compatibility
-type MotionProps = {
-  children?: React.ReactNode;
-  className?: string;
-  style?: React.CSSProperties;
+// Disable ESLint for this file as it requires flexibility with types
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
+import React, { HTMLAttributes, ButtonHTMLAttributes } from "react";
+
+// Define a simple interface that matches common motion props
+interface MotionProps extends HTMLAttributes<HTMLElement> {
   initial?: any;
   animate?: any;
   exit?: any;
@@ -15,34 +19,21 @@ type MotionProps = {
   whileHover?: any;
   // Add any other props you need
   [key: string]: any;
-};
-
-function createMotionComponent(element: keyof JSX.IntrinsicElements) {
-  return function MotionComponent({
-    children,
-    className,
-    style,
-    ...props
-  }: MotionProps) {
-    // Just render the base component with className and style, ignoring motion props
-    return React.createElement(element, { className, style }, children);
-  };
 }
 
-// Create fallback components
+// Create a component that just passes through children without any animation
 const motion = {
-  div: createMotionComponent("div"),
-  section: createMotionComponent("section"),
-  p: createMotionComponent("p"),
-  h1: createMotionComponent("h1"),
-  h2: createMotionComponent("h2"),
-  h3: createMotionComponent("h3"),
-  span: createMotionComponent("span"),
-  img: createMotionComponent("img"),
-  button: createMotionComponent("button"),
-  a: createMotionComponent("a"),
-  ul: createMotionComponent("ul"),
-  li: createMotionComponent("li"),
+  div: (props: MotionProps) => <div {...props} />,
+  span: (props: MotionProps) => <span {...props} />,
+  button: (props: MotionProps & ButtonHTMLAttributes<HTMLButtonElement>) => (
+    <button {...props} />
+  ),
+  // Add more HTML elements as needed
 };
 
-export { motion };
+// Simplified AnimatePresence component that just renders children
+const AnimatePresence = ({ children }: { children: React.ReactNode }) => (
+  <>{children}</>
+);
+
+export { motion, AnimatePresence };

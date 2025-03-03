@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 
@@ -28,6 +27,76 @@ const GameResult: React.FC<GameResultProps> = ({
   hasBlackjack,
   currentBet,
 }) => {
+  // Add result data definitions using useMemo to prevent re-renders
+  const resultData = useMemo(
+    () => ({
+      win: {
+        title: "You Win!",
+        message: `You beat the dealer with a score of ${playerScore}!`,
+        icon: "🏆",
+        color: "from-green-600 to-green-700",
+        textColor: "text-green-400",
+        borderColor: "border-green-600",
+        payout: currentBet * 2,
+      },
+      blackjack: {
+        title: "Blackjack!",
+        message: "You got a blackjack! Amazing play!",
+        icon: "💰",
+        color: "from-yellow-500 to-yellow-600",
+        textColor: "text-yellow-300",
+        borderColor: "border-yellow-500",
+        payout: currentBet * 2.5,
+      },
+      push: {
+        title: "Push",
+        message: "It's a tie! Your bet is returned.",
+        icon: "🤝",
+        color: "from-blue-600 to-blue-700",
+        textColor: "text-blue-400",
+        borderColor: "border-blue-600",
+        payout: currentBet,
+      },
+      lose: {
+        title: "You Lose",
+        message: `The dealer beat your ${playerScore} with ${dealerScore}.`,
+        icon: "😢",
+        color: "from-red-600 to-red-700",
+        textColor: "text-red-400",
+        borderColor: "border-red-600",
+        payout: 0,
+      },
+      dealerWin: {
+        title: "Dealer Wins",
+        message: `The dealer's ${dealerScore} beats your ${playerScore}.`,
+        icon: "👨‍💼",
+        color: "from-red-600 to-red-700",
+        textColor: "text-red-400",
+        borderColor: "border-red-600",
+        payout: 0,
+      },
+      bust: {
+        title: "Bust!",
+        message: `You went over 21 with ${playerScore}!`,
+        icon: "💥",
+        color: "from-red-600 to-red-700",
+        textColor: "text-red-400",
+        borderColor: "border-red-600",
+        payout: 0,
+      },
+      default: {
+        title: "Game Over",
+        message: "The game has ended.",
+        icon: "🎮",
+        color: "from-gray-600 to-gray-700",
+        textColor: "text-gray-400",
+        borderColor: "border-gray-600",
+        payout: 0,
+      },
+    }),
+    [playerScore, dealerScore, currentBet]
+  );
+
   // Safety check: Override result for equal scores
   let correctedResult = result;
 
@@ -76,7 +145,7 @@ const GameResult: React.FC<GameResultProps> = ({
 
       // Trigger confetti effect for wins and blackjacks
       if (correctedResult === "win" || correctedResult === "blackjack") {
-        const duration = correctedResult === "blackjack" ? 3000 : 2000;
+        // Duration not directly used, so remove the variable
         const colors =
           correctedResult === "blackjack"
             ? ["#FFD700", "#FFA500"]
@@ -102,67 +171,7 @@ const GameResult: React.FC<GameResultProps> = ({
         }
       }
     }
-  }, [correctedResult]); // Now we can safely include correctedResult in dependencies
-
-  const resultData = {
-    win: {
-      title: "You Win!",
-      message: `You beat the dealer with a score of ${playerScore}!`,
-      color: "from-green-500 to-green-700",
-      textColor: "text-green-400",
-      borderColor: "border-green-600",
-      icon: "🏆",
-    },
-    blackjack: {
-      title: "Blackjack!",
-      message: "Perfect hand! You got a Blackjack!",
-      color: "from-yellow-400 to-yellow-600",
-      textColor: "text-yellow-300",
-      borderColor: "border-yellow-500",
-      icon: "🃏",
-    },
-    push: {
-      title: "Push",
-      message: "It's a tie. Your bet has been returned.",
-      color: "from-blue-600 to-blue-800",
-      textColor: "text-blue-400",
-      borderColor: "border-blue-600",
-      icon: "🤝",
-    },
-    lose: {
-      title: "You Lose",
-      message: `The dealer won with a score of ${dealerScore}.`,
-      color: "from-red-600 to-red-800",
-      textColor: "text-red-400",
-      borderColor: "border-red-600",
-      icon: "💸",
-    },
-    dealerWin: {
-      title: "Dealer Wins",
-      message: `The dealer won with a score of ${dealerScore}.`,
-      color: "from-red-600 to-red-800",
-      textColor: "text-red-400",
-      borderColor: "border-red-600",
-      icon: "💸",
-    },
-    bust: {
-      title: "Bust!",
-      message: `You went over 21 with a score of ${playerScore}.`,
-      color: "from-red-600 to-red-800",
-      textColor: "text-red-400",
-      borderColor: "border-red-600",
-      icon: "💥",
-    },
-    // Default fallback for unexpected result types
-    default: {
-      title: "Game Over",
-      message: "The game has ended.",
-      color: "from-gray-600 to-gray-800",
-      textColor: "text-gray-400",
-      borderColor: "border-gray-600",
-      icon: "🎮",
-    },
-  };
+  }, [correctedResult, resultData]); // Dependencies
 
   // Use the result data if it exists, otherwise use default
   const currentResult = resultData[correctedResult] || resultData.default;
