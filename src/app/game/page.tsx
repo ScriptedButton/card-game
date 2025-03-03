@@ -18,6 +18,10 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import GameResult from "@/components/GameResult";
 import { Card as PlayingCardType } from "@/lib/services/cardApi";
+import { isBust } from "@/lib/utils/blackjackUtils";
+
+// Define types needed for the component
+type GameStatus = "idle" | "dealing" | "playerTurn" | "dealerTurn" | "complete";
 
 export default function GamePage() {
   const {
@@ -39,6 +43,7 @@ export default function GamePage() {
     doubleDown,
     dismissError,
     hasBlackjack,
+    resetGame,
   } = useBlackjack();
 
   const [betAmount, setBetAmount] = useState<number>(10);
@@ -77,13 +82,21 @@ export default function GamePage() {
 
   // Handle chip selection
   const handleChipClick = (value: number) => {
-    console.log("Chip selected:", value);
+    console.log("Chip selected:", value, "Current game status:", gameStatus);
+
     // Update the local state first
     setBetAmount(value);
 
     // Update the context state if in idle mode
     if (gameStatus === "idle") {
+      console.log("Setting bet in context to:", value);
       setBet(value);
+    } else {
+      console.log(
+        "Can't update bet - game is not in idle state (current state:",
+        gameStatus,
+        ")"
+      );
     }
   };
 
@@ -182,18 +195,28 @@ export default function GamePage() {
         playerScore,
         dealerScore,
         hasBlackjack,
+        playerCards: playerCards.length,
+        dealerCards: dealerCards.length,
       });
 
-      // Store the current game state in history
+      // Ensure dealer cards are fully revealed before saving to history
+      const revealedDealerCards = dealerCards.map((card) => ({ ...card }));
+
+      // Store the current game state in history - create a deep copy to prevent references
       setGameHistory({
-        playerCards: [...playerCards],
-        dealerCards: [...dealerCards],
+        playerCards: playerCards.map((card) => ({ ...card })),
+        dealerCards: revealedDealerCards,
         result,
         playerScore,
         dealerScore,
         hasBlackjack,
         currentBet,
       });
+
+      console.log(
+        "Saving game to history with dealer cards:",
+        revealedDealerCards.length
+      );
 
       setShowGameResult(true);
 
@@ -271,6 +294,19 @@ export default function GamePage() {
   const getResultType = () => {
     if (!showGameResult) return null;
 
+    console.log("Determining result type:", {
+      result,
+      hasBlackjack,
+    });
+
+    // Debug push condition
+    if (playerScore === dealerScore) {
+      console.log(
+        `PUSH CONDITION: Player (${playerScore}) equals Dealer (${dealerScore})`
+      );
+      return "push";
+    }
+
     // FIXED: Make sure the result is correct for dealer having 21
     if (dealerScore === 21 && playerScore < 21) {
       return "lose";
@@ -291,6 +327,12 @@ export default function GamePage() {
       return "blackjack";
     }
 
+    console.log(
+      "Transforming game result",
+      JSON.stringify(result),
+      "to UI result",
+      JSON.stringify(uiResult)
+    );
     return uiResult;
   };
 
@@ -376,12 +418,72 @@ export default function GamePage() {
     // Keep the game history data until a new game starts
     // This ensures cards remain visible during transition
 
-    // Wait for UI update before starting new game
-    setTimeout(() => {
-      // Clear the game history when starting a new game
-      setGameHistory(null);
-      startNewGame(10);
-    }, 0);
+    // Clear the game history
+    setGameHistory(null);
+
+    // Reset the game to idle state through context
+    resetGame(); // Use the new resetGame function
+
+    // Don't automatically start a new game - let the player choose their bet first
+    console.log("Game reset to idle state - player can now select a bet");
+  };
+
+  // Create a special component just for rendering cards that won't disappear
+  const StableCards = ({
+    cards,
+    prefix,
+    isDealer = false,
+    isWinningHand = false,
+  }: {
+    cards: PlayingCardType[];
+    prefix: string;
+    isDealer?: boolean;
+    isWinningHand?: boolean;
+  }) => {
+    // Helper function to check if we should show the card
+    const shouldShowCard = (index: number): boolean => {
+      // If not dealer cards, always show
+      if (!isDealer) return true;
+
+      // If first dealer card, always show
+      if (index === 0) return true;
+
+      // Show all cards during dealer turn or when game is complete
+      if (["dealerTurn", "complete"].includes(gameStatus)) return true;
+
+      // If game is complete and we're showing from history
+      if (gameHistory && gameStatus === "complete") return true;
+
+      // Otherwise hide the card
+      return false;
+    };
+
+    return (
+      <div className="flex flex-wrap gap-4 justify-center">
+        {cards.map((card, index) => (
+          <PlayingCard
+            key={`${prefix}-${card.suit}-${card.rank}-${index}`}
+            card={shouldShowCard(index) ? card : undefined}
+            isFlipped={
+              isDealer &&
+              index !== 0 &&
+              !["dealerTurn", "complete"].includes(gameStatus)
+            }
+            animationDelay={index * 0.2 + (isDealer ? 0 : 0.3)}
+            isNew={
+              gameStatus === "dealing" ||
+              (isDealer &&
+                gameStatus === "dealerTurn" &&
+                index >= cards.length - 1) ||
+              (!isDealer &&
+                gameStatus === "playerTurn" &&
+                index >= cards.length - 1)
+            }
+            isWinningHand={isWinningHand}
+          />
+        ))}
+      </div>
+    );
   };
 
   // Render the dealer area with animations
@@ -424,33 +526,12 @@ export default function GamePage() {
             {displayedScore}
           </motion.span>
         </div>
-        <div className="flex flex-wrap gap-4 justify-center">
-          <AnimatePresence mode="sync" presenceAffectsLayout={false}>
-            {cardsToDisplay.map((card, index) => (
-              <PlayingCard
-                key={`dealer-${card.suit}-${card.rank}-${index}`}
-                card={
-                  index === 0 ||
-                  gameStatus === "dealerTurn" ||
-                  gameStatus === "complete"
-                    ? card
-                    : undefined
-                }
-                isFlipped={
-                  index !== 0 &&
-                  gameStatus !== "dealerTurn" &&
-                  gameStatus !== "complete"
-                }
-                animationDelay={index * 0.2}
-                isNew={
-                  gameStatus === "dealing" ||
-                  (gameStatus === "dealerTurn" &&
-                    index >= dealerCards.length - 1)
-                }
-              />
-            ))}
-          </AnimatePresence>
-        </div>
+        <StableCards
+          cards={cardsToDisplay}
+          prefix="dealer"
+          isDealer={true}
+          isWinningHand={gameStatus === "complete" && result === "dealer"}
+        />
       </motion.div>
     );
   };
@@ -493,23 +574,13 @@ export default function GamePage() {
             {scoreToDisplay}
           </motion.span>
         </div>
-        <div className="flex flex-wrap gap-4 justify-center mb-6">
-          <AnimatePresence mode="sync" presenceAffectsLayout={false}>
-            {cardsToDisplay.map((card, index) => (
-              <PlayingCard
-                key={`player-${card.suit}-${card.rank}-${index}`}
-                card={card}
-                animationDelay={index * 0.2 + 0.3}
-                isNew={
-                  gameStatus === "dealing" ||
-                  (gameStatus === "playerTurn" &&
-                    index >= cardsToDisplay.length - 1 &&
-                    index >= playerCards.length - 1) // Only new if added during current game
-                }
-                isWinningHand={gameStatus === "complete" && result === "player"}
-              />
-            ))}
-          </AnimatePresence>
+        <div className="mb-6">
+          <StableCards
+            cards={cardsToDisplay}
+            prefix="player"
+            isDealer={false}
+            isWinningHand={gameStatus === "complete" && result === "player"}
+          />
         </div>
       </motion.div>
     );

@@ -56,11 +56,10 @@ export default function PlayingCard({
       },
     },
     exit: {
-      opacity: 0,
-      y: -20,
+      opacity: isWinningHand ? 1 : 0,
+      y: isWinningHand ? 0 : -20,
       transition: {
         duration: 0.3,
-        // Only run exit animation when not in the "complete" game state
         delay: 0.5,
       },
     },

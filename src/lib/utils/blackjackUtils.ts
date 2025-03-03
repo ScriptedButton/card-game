@@ -11,15 +11,29 @@ export function getCardValue(card: Card, aceHigh: boolean = true): number {
 
   const rank = card.rank.toLowerCase();
 
+  // Add debugging for card value calculation
+  console.log(`Calculating value for card: ${card.rank} of ${card.suit}`);
+
   if (rank === "ace") {
-    return aceHigh ? 11 : 1;
+    const value = aceHigh ? 11 : 1;
+    console.log(`Ace valued as ${value}`);
+    return value;
   }
 
   if (["king", "queen", "jack"].includes(rank)) {
+    console.log(`Face card (${rank}) valued as 10`);
     return 10;
   }
 
-  return parseInt(rank, 10);
+  // Parse numeric ranks and validate
+  const numericValue = parseInt(rank, 10);
+  if (isNaN(numericValue)) {
+    console.error(`Invalid card rank: ${rank}, defaulting to 0`);
+    return 0;
+  }
+
+  console.log(`Numeric card (${rank}) valued as ${numericValue}`);
+  return numericValue;
 }
 
 /**
@@ -127,16 +141,34 @@ export function determineWinner(
     return "push";
   }
 
+  // Add detailed card-by-card value calculation
+  console.log("CARD-BY-CARD VALUE CALCULATION:");
+  console.log("Player cards:");
+  playerCards.forEach((card, index) => {
+    const value = getCardValue(card);
+    console.log(`  Card ${index + 1}: ${card.rank} of ${card.suit} = ${value}`);
+  });
+  console.log("Dealer cards:");
+  dealerCards.forEach((card, index) => {
+    const value = getCardValue(card);
+    console.log(`  Card ${index + 1}: ${card.rank} of ${card.suit} = ${value}`);
+  });
+
   const playerValue = calculateHandValue(playerCards);
   const dealerValue = calculateHandValue(dealerCards);
   const playerHasBlackjack = isBlackjack(playerCards);
   const dealerHasBlackjack = isBlackjack(dealerCards);
 
-  console.log("Hand values:", {
+  console.log("DETAILED HAND ANALYSIS:", {
+    playerCards: playerCards.length,
+    dealerCards: dealerCards.length,
     playerValue,
     dealerValue,
     playerHasBlackjack,
     dealerHasBlackjack,
+    isEqual: playerValue === dealerValue,
+    dealerHigher: dealerValue > playerValue,
+    playerHigher: playerValue > dealerValue,
   });
 
   // Check for blackjack
@@ -166,6 +198,12 @@ export function determineWinner(
     return "player"; // Dealer busted, player wins
   }
 
+  // Check for equal scores first - this is a push
+  if (playerValue === dealerValue) {
+    console.log(`PUSH DETECTED: Equal values (${playerValue}) - TIE GAME`);
+    return "push"; // Equal values, it's a tie
+  }
+
   // Compare hand values
   if (playerValue > dealerValue) {
     console.log(
@@ -181,8 +219,9 @@ export function determineWinner(
     return "dealer"; // Dealer has higher value, dealer wins
   }
 
-  console.log(`Equal values (${playerValue}) - PUSH`);
-  return "push"; // Equal values, it's a tie
+  // This should never happen, but added as a fallback
+  console.log("Unexpected case in determineWinner - defaulting to push");
+  return "push";
 }
 
 /**
@@ -237,6 +276,11 @@ export function calculatePayout(
   bet: number,
   isPlayerBlackjack: boolean
 ): number {
+  // Handle negative bets as 0
+  if (bet <= 0) {
+    return 0;
+  }
+
   // For blackjack (3:2 payout)
   if (isPlayerBlackjack) {
     // Player gets their bet back + 1.5 times their bet as winnings

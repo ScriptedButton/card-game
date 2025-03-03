@@ -55,6 +55,7 @@ interface BlackjackContextType {
   setBet: (amount: number) => void;
   doubleDown: () => Promise<void>;
   dismissError: () => void;
+  resetGame: () => void;
 }
 
 const BlackjackContext = createContext<BlackjackContextType | undefined>(
@@ -215,6 +216,14 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     setCurrentBet(bet);
     setRetryCount(0);
 
+    // Deduct the bet amount from the player's balance when the game starts
+    // This bet will be:
+    // - Lost if the dealer wins
+    // - Returned if there's a push (tie)
+    // - Returned plus winnings if the player wins
+    setBalance((prev) => Math.max(0, prev - bet));
+    console.log(`Bet of $${bet} deducted from balance`);
+
     try {
       // Always get a fresh deck for each new game
       const response = await getShuffledDeck(1);
@@ -289,6 +298,16 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
           console.log("Dealer also has blackjack - Push");
           setResult("push");
           setGameStatus("complete");
+
+          // Return the original bet to the player (bet was already deducted at game start)
+          console.log(`Push with blackjack - returning bet of ${bet}`);
+          setBalance((prev) => {
+            const newBalance = prev + bet;
+            console.log(
+              `Balance updated for push with blackjack: ${prev} + ${bet} = ${newBalance}`
+            );
+            return newBalance;
+          });
         } else {
           // Player wins with blackjack
           console.log("Player wins with blackjack!");
@@ -411,7 +430,18 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
     setIsLoading(true);
     setLoadingStage("doubleDown");
+
+    // Double the current bet
+    const additionalBet = currentBet;
     setCurrentBet(currentBet * 2);
+
+    // Deduct the additional bet from the balance
+    setBalance((prev) => prev - additionalBet);
+    console.log(
+      `Additional bet of $${additionalBet} deducted for double down, new balance: ${
+        balance - additionalBet
+      }`
+    );
 
     try {
       console.log("Player doubles down");
@@ -583,19 +613,65 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       const currentPlayerCards = updatedPlayerCards || playerCards;
 
       // Add extra debugging
+      const finalPlayerScore = calculateHandValue(currentPlayerCards);
+      const finalDealerScore = calculateHandValue(dealerCards);
+
+      // Check for duplicate cards which could cause calculation issues
+      const allCards = [...currentPlayerCards, ...dealerCards];
+      const cardSignatures = allCards.map(
+        (card) => `${card.rank} of ${card.suit}`
+      );
+      const uniqueCardSignatures = new Set(cardSignatures);
+
+      if (cardSignatures.length !== uniqueCardSignatures.size) {
+        console.error(
+          "DUPLICATE CARDS DETECTED! This could cause scoring issues."
+        );
+        console.error("Card list:", cardSignatures);
+
+        // Find duplicates
+        const counts: Record<string, number> = {};
+        const duplicates: string[] = [];
+
+        cardSignatures.forEach((sig) => {
+          counts[sig] = (counts[sig] || 0) + 1;
+          if (counts[sig] > 1 && !duplicates.includes(sig)) {
+            duplicates.push(sig);
+          }
+        });
+
+        console.error("Duplicate cards:", duplicates);
+      }
+
       console.log("Final cards at game end:", {
         playerCards: currentPlayerCards.map((c) => `${c.rank} of ${c.suit}`),
         dealerCards: dealerCards.map((c) => `${c.rank} of ${c.suit}`),
-        playerScore: calculateHandValue(currentPlayerCards),
-        dealerScore: calculateHandValue(dealerCards),
+        playerScore: finalPlayerScore,
+        dealerScore: finalDealerScore,
       });
 
       // Determine the winner
       const winResult = determineWinner(currentPlayerCards, dealerCards);
       console.log("Game result determined:", winResult);
 
-      // Update state
-      setResult(winResult);
+      // Add detailed push check
+      if (
+        finalPlayerScore === finalDealerScore &&
+        !isBust(currentPlayerCards) &&
+        !isBust(dealerCards)
+      ) {
+        console.log(
+          `PUSH CONFIRMED: Player (${finalPlayerScore}) equals Dealer (${finalDealerScore})`
+        );
+
+        // Always set result to push when scores are equal and neither has bust
+        setResult("push");
+      } else {
+        // For non-push cases, set the result from determineWinner
+        setResult(winResult);
+      }
+
+      // Mark the game as complete
       setGameStatus("complete");
 
       console.log("Game ended with result:", winResult);
@@ -611,14 +687,25 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
           ? "with blackjack (3:2)"
           : "regular win (1:1)";
         console.log(`Player won ${payoutDescription}! Payout: ${payoutAmount}`);
+        // Player gets their original bet back plus winnings
         setBalance((prev) => prev + payoutAmount);
       } else if (winResult === "push") {
-        console.log("Push (tie) - bet returned");
-        setBalance((prev) => prev + currentBet);
+        console.log(`Push (tie) - bet returned. Original bet: ${currentBet}`);
+        // Return the original bet to the player on push
+        // (bet was already deducted at game start, so we're just giving it back)
+        setBalance((prev) => {
+          const newBalance = prev + currentBet;
+          console.log(
+            `Balance updated for push: ${prev} + ${currentBet} = ${newBalance}`
+          );
+          return newBalance;
+        });
       } else {
-        console.log("Dealer won - player loses bet");
+        // Dealer wins
+        console.log(`Dealer won - player loses bet of ${currentBet}`);
+        // No balance update needed since the bet was already deducted when the game started
+        // The player's bet is forfeited to the house
       }
-      // No need to update balance for dealer win as bet was already deducted
     } catch (err) {
       console.error("Error in handleGameEnd:", err);
       // Make sure we still set the game as complete even if there's an error
@@ -642,6 +729,23 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
   // Dismiss error message
   const dismissError = () => {
+    setError(null);
+
+    // Reset game to idle state to allow new bets
+    if (gameStatus === "complete") {
+      console.log("Resetting game to idle state from dismissError");
+      setGameStatus("idle");
+      setResult(null);
+    }
+  };
+
+  // Add a dedicated function to reset the game
+  const resetGame = () => {
+    console.log("Explicitly resetting game to idle state");
+    setGameStatus("idle");
+    setResult(null);
+    setPlayerCards([]);
+    setDealerCards([]);
     setError(null);
   };
 
@@ -674,6 +778,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     setBet,
     doubleDown,
     dismissError,
+    resetGame,
   };
 
   return (
