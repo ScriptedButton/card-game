@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import GameResult from "@/components/GameResult";
+import { Card as PlayingCardType } from "@/lib/services/cardApi";
 
 export default function GamePage() {
   const {
@@ -46,6 +47,16 @@ export default function GamePage() {
   const [logs, setLogs] = useState<string[]>([]);
   const logsRef = useRef<HTMLDivElement>(null);
   const [showGameResult, setShowGameResult] = useState(false);
+  // Game history to preserve completed hands
+  const [gameHistory, setGameHistory] = useState<{
+    playerCards: PlayingCardType[];
+    dealerCards: PlayingCardType[];
+    result: typeof result;
+    playerScore: number;
+    dealerScore: number;
+    hasBlackjack: boolean;
+    currentBet: number;
+  } | null>(null);
 
   // Add refs at the top level for console methods
   const originalLogRef = useRef<typeof console.log>(console.log);
@@ -60,7 +71,20 @@ export default function GamePage() {
 
   // Handle starting a new game
   const handleStartGame = () => {
+    console.log("Starting game with bet amount:", betAmount);
     startNewGame(betAmount);
+  };
+
+  // Handle chip selection
+  const handleChipClick = (value: number) => {
+    console.log("Chip selected:", value);
+    // Update the local state first
+    setBetAmount(value);
+
+    // Update the context state if in idle mode
+    if (gameStatus === "idle") {
+      setBet(value);
+    }
   };
 
   // Add log message
@@ -70,35 +94,52 @@ export default function GamePage() {
     originalErrorRef.current = console.error;
     originalWarnRef.current = console.warn;
 
-    console.log = (...args) => {
+    // Use useCallback to memoize the console method overrides
+    const logFunction = (...args: any[]) => {
       originalLogRef.current(...args);
       const message = args
         .map((arg) =>
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
         )
         .join(" ");
-      setLogs((prev) => [...prev, `LOG: ${message}`]);
+
+      // Use a function to update state instead of directly updating
+      setTimeout(() => {
+        setLogs((prev) => [...prev, `LOG: ${message}`]);
+      }, 0);
     };
 
-    console.error = (...args) => {
+    const errorFunction = (...args: any[]) => {
       originalErrorRef.current(...args);
       const message = args
         .map((arg) =>
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
         )
         .join(" ");
-      setLogs((prev) => [...prev, `ERROR: ${message}`]);
+
+      // Use a function to update state instead of directly updating
+      setTimeout(() => {
+        setLogs((prev) => [...prev, `ERROR: ${message}`]);
+      }, 0);
     };
 
-    console.warn = (...args) => {
+    const warnFunction = (...args: any[]) => {
       originalWarnRef.current(...args);
       const message = args
         .map((arg) =>
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
         )
         .join(" ");
-      setLogs((prev) => [...prev, `WARN: ${message}`]);
+
+      // Use a function to update state instead of directly updating
+      setTimeout(() => {
+        setLogs((prev) => [...prev, `WARN: ${message}`]);
+      }, 0);
     };
+
+    console.log = logFunction;
+    console.error = errorFunction;
+    console.warn = warnFunction;
 
     return () => {
       console.log = originalLogRef.current;
@@ -129,7 +170,7 @@ export default function GamePage() {
     return () => clearInterval(interval);
   }, [gameStatus]);
 
-  // Show game result when game ends
+  // Show game result when game ends and save the current game to history
   useEffect(() => {
     if (
       gameStatus === "complete" &&
@@ -143,16 +184,42 @@ export default function GamePage() {
         hasBlackjack,
       });
 
+      // Store the current game state in history
+      setGameHistory({
+        playerCards: [...playerCards],
+        dealerCards: [...dealerCards],
+        result,
+        playerScore,
+        dealerScore,
+        hasBlackjack,
+        currentBet,
+      });
+
       setShowGameResult(true);
 
-      // Hide result after 3 seconds
+      // Hide result after 3 seconds and reset game state
       const timer = setTimeout(() => {
         setShowGameResult(false);
+        if (gameStatus === "complete") {
+          console.log(
+            "Game is complete, waiting for user to choose next action"
+          );
+          // We don't automatically reset - wait for the user to press Play Again
+        }
       }, 3000);
 
       return () => clearTimeout(timer);
     }
-  }, [gameStatus, result, playerScore, dealerScore, hasBlackjack]);
+  }, [
+    gameStatus,
+    result,
+    playerScore,
+    dealerScore,
+    hasBlackjack,
+    playerCards,
+    dealerCards,
+    currentBet,
+  ]);
 
   // Check if the current hand should have been a win for the dealer
   useEffect(() => {
@@ -235,6 +302,17 @@ export default function GamePage() {
     return 0;
   };
 
+  // Memoize the result type and payout amount to prevent recalculations during render
+  const memoizedResultType = React.useMemo(
+    () => getResultType(),
+    [showGameResult, result, dealerScore, playerScore, hasBlackjack]
+  );
+
+  const memoizedPayoutAmount = React.useMemo(
+    () => getPayoutAmount(),
+    [result, hasBlackjack, currentBet]
+  );
+
   // Card animation variants
   const cardVariants = {
     hidden: { opacity: 0, y: 50, scale: 0.8 },
@@ -279,8 +357,55 @@ export default function GamePage() {
     window.location.reload();
   };
 
+  // Handle restarting the game when errors occur
+  const handleRestartGame = () => {
+    console.log("Restarting game after error");
+    dismissError();
+    // Reset to idle state
+    setShowGameResult(false);
+    setBetAmount(10);
+    handleChipClick(10);
+  };
+
+  // Explicitly reset the game state to show chips
+  const handlePlayAgain = () => {
+    console.log("Playing again, resetting to idle state");
+    setShowGameResult(false);
+    setBetAmount(10);
+
+    // Keep the game history data until a new game starts
+    // This ensures cards remain visible during transition
+
+    // Wait for UI update before starting new game
+    setTimeout(() => {
+      // Clear the game history when starting a new game
+      setGameHistory(null);
+      startNewGame(10);
+    }, 0);
+  };
+
   // Render the dealer area with animations
   const renderDealerArea = () => {
+    // Use cards from game history if available and game is complete
+    const cardsToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.dealerCards
+        : dealerCards;
+
+    // Use score from game history if available and game is complete
+    const scoreToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.dealerScore
+        : dealerScore;
+
+    // Determine what to show for score
+    const displayedScore =
+      gameStatus === "dealerTurn" || gameStatus === "complete"
+        ? scoreToDisplay
+        : cardsToDisplay.length > 0
+        ? "?"
+        : "0";
+
     return (
       <motion.div
         className="flex flex-col items-center"
@@ -296,32 +421,35 @@ export default function GamePage() {
             animate={{ scale: 1 }}
             transition={{ duration: 0.3 }}
           >
-            {dealerScore}
+            {displayedScore}
           </motion.span>
         </div>
         <div className="flex flex-wrap gap-4 justify-center">
-          {dealerCards.map((card, index) => (
-            <PlayingCard
-              key={`dealer-${index}`}
-              card={
-                index === 0 ||
-                gameStatus === "dealerTurn" ||
-                gameStatus === "complete"
-                  ? card
-                  : undefined
-              }
-              isFlipped={
-                index !== 0 &&
-                gameStatus !== "dealerTurn" &&
-                gameStatus !== "complete"
-              }
-              animationDelay={index * 0.2}
-              isNew={
-                gameStatus === "dealing" ||
-                (gameStatus === "dealerTurn" && index >= dealerCards.length - 1)
-              }
-            />
-          ))}
+          <AnimatePresence mode="sync" presenceAffectsLayout={false}>
+            {cardsToDisplay.map((card, index) => (
+              <PlayingCard
+                key={`dealer-${card.suit}-${card.rank}-${index}`}
+                card={
+                  index === 0 ||
+                  gameStatus === "dealerTurn" ||
+                  gameStatus === "complete"
+                    ? card
+                    : undefined
+                }
+                isFlipped={
+                  index !== 0 &&
+                  gameStatus !== "dealerTurn" &&
+                  gameStatus !== "complete"
+                }
+                animationDelay={index * 0.2}
+                isNew={
+                  gameStatus === "dealing" ||
+                  (gameStatus === "dealerTurn" &&
+                    index >= dealerCards.length - 1)
+                }
+              />
+            ))}
+          </AnimatePresence>
         </div>
       </motion.div>
     );
@@ -329,6 +457,18 @@ export default function GamePage() {
 
   // Render the player area with animations
   const renderPlayerArea = () => {
+    // Use cards from game history if available and game is complete
+    const cardsToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.playerCards
+        : playerCards;
+
+    // Use score from game history if available and game is complete
+    const scoreToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.playerScore
+        : playerScore;
+
     return (
       <motion.div
         className="flex flex-col items-center"
@@ -344,27 +484,32 @@ export default function GamePage() {
             animate={{
               scale: 1,
               backgroundColor:
-                playerScore > 21
+                scoreToDisplay > 21
                   ? "rgba(220, 38, 38, 0.7)"
                   : "rgba(0, 0, 0, 0.5)",
             }}
             transition={{ duration: 0.3 }}
           >
-            {playerScore}
+            {scoreToDisplay}
           </motion.span>
         </div>
         <div className="flex flex-wrap gap-4 justify-center mb-6">
-          {playerCards.map((card, index) => (
-            <PlayingCard
-              key={`player-${index}`}
-              card={card}
-              animationDelay={index * 0.2 + 0.3}
-              isNew={
-                gameStatus === "dealing" ||
-                (gameStatus === "playerTurn" && index >= playerCards.length - 1)
-              }
-            />
-          ))}
+          <AnimatePresence mode="sync" presenceAffectsLayout={false}>
+            {cardsToDisplay.map((card, index) => (
+              <PlayingCard
+                key={`player-${card.suit}-${card.rank}-${index}`}
+                card={card}
+                animationDelay={index * 0.2 + 0.3}
+                isNew={
+                  gameStatus === "dealing" ||
+                  (gameStatus === "playerTurn" &&
+                    index >= cardsToDisplay.length - 1 &&
+                    index >= playerCards.length - 1) // Only new if added during current game
+                }
+                isWinningHand={gameStatus === "complete" && result === "player"}
+              />
+            ))}
+          </AnimatePresence>
         </div>
       </motion.div>
     );
@@ -412,7 +557,7 @@ export default function GamePage() {
         {gameStatus === "complete" && (
           <motion.button
             className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-yellow-500/20"
-            onClick={handleStartGame}
+            onClick={handlePlayAgain}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             initial={{ opacity: 0, scale: 0.8 }}
@@ -425,6 +570,27 @@ export default function GamePage() {
       </motion.div>
     );
   };
+
+  // Debug logging for game status changes
+  useEffect(() => {
+    console.log(`Game status changed to: ${gameStatus}`);
+
+    if (gameStatus === "idle") {
+      console.log("Game is idle - chips should be visible now");
+    } else if (gameStatus === "complete") {
+      console.log("Game complete - cards should remain visible");
+      // Log if we have game history to confirm preservation
+      if (gameHistory) {
+        console.log("Game history is preserved:", {
+          playerCards: gameHistory.playerCards.length,
+          dealerCards: gameHistory.dealerCards.length,
+          result: gameHistory.result,
+        });
+      } else {
+        console.warn("No game history available for completed game!");
+      }
+    }
+  }, [gameStatus, gameHistory]);
 
   return (
     <main className="game-table flex min-h-screen flex-col items-center justify-between p-4 relative overflow-hidden">
@@ -450,6 +616,35 @@ export default function GamePage() {
       </motion.header>
 
       <div className="flex flex-col items-center justify-center flex-grow w-full max-w-4xl">
+        {/* Display error message if there is one */}
+        {error && (
+          <motion.div
+            className="mb-4 p-4 bg-red-600/80 text-white rounded-lg shadow-lg w-full max-w-md"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="flex items-start">
+              <AlertCircle className="mr-2 h-5 w-5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold">{error}</p>
+                <button
+                  onClick={handleRestartGame}
+                  className="mt-2 bg-red-700 hover:bg-red-800 text-white py-1 px-4 rounded-md text-sm flex items-center"
+                >
+                  <RefreshCw className="mr-1 h-4 w-4" /> Restart Game
+                </button>
+              </div>
+              <button
+                onClick={dismissError}
+                className="ml-3 flex-shrink-0 text-white hover:text-red-200"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+
         {isLoading ? (
           <LoadingIndicator />
         ) : (
@@ -489,7 +684,7 @@ export default function GamePage() {
                             ? "#9F7AEA"
                             : "#F56565",
                       }}
-                      onClick={() => setBetAmount(chipValue)}
+                      onClick={() => handleChipClick(chipValue)}
                       whileHover={{
                         scale: 1.1,
                         rotate: 5,
@@ -513,7 +708,7 @@ export default function GamePage() {
                     <p className="text-lg text-white mb-3">
                       Current Bet:{" "}
                       <span className="text-yellow-300 font-bold">
-                        ${currentBet}
+                        ${gameStatus === "idle" ? betAmount : currentBet}
                       </span>
                     </p>
                     <div className="flex gap-3 justify-center">
@@ -545,7 +740,10 @@ export default function GamePage() {
       {/* Game result component */}
       <AnimatePresence>
         {showGameResult && (
-          <GameResult result={getResultType()} payout={getPayoutAmount()} />
+          <GameResult
+            result={memoizedResultType}
+            payout={memoizedPayoutAmount}
+          />
         )}
       </AnimatePresence>
     </main>

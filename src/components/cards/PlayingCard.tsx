@@ -15,6 +15,7 @@ export interface PlayingCardProps {
   animationDelay?: number;
   isNew?: boolean;
   faceUp?: boolean;
+  isWinningHand?: boolean;
 }
 
 export default function PlayingCard({
@@ -23,6 +24,7 @@ export default function PlayingCard({
   animationDelay = 0,
   isNew = false,
   faceUp = true,
+  isWinningHand = false,
 }: PlayingCardProps) {
   const [isInitialMount, setIsInitialMount] = useState(true);
   const [isCardFlipped, setIsCardFlipped] = useState(isFlipped);
@@ -56,7 +58,11 @@ export default function PlayingCard({
     exit: {
       opacity: 0,
       y: -20,
-      transition: { duration: 0.3 },
+      transition: {
+        duration: 0.3,
+        // Only run exit animation when not in the "complete" game state
+        delay: 0.5,
+      },
     },
     hover: {
       scale: 1.05,
@@ -78,6 +84,19 @@ export default function PlayingCard({
         delay: 0.2 + animationDelay,
       },
     },
+    winning: {
+      boxShadow: [
+        "0 0 0 rgba(0, 255, 0, 0)",
+        "0 0 15px rgba(0, 255, 0, 0.7)",
+        "0 0 0 rgba(0, 255, 0, 0)",
+      ],
+      scale: [1, 1.05, 1],
+      transition: {
+        duration: 1.5,
+        repeat: 1,
+        repeatType: "loop" as const,
+      },
+    },
   };
 
   // Only try to access card properties if card is defined
@@ -91,7 +110,13 @@ export default function PlayingCard({
         isNew ? "deal-animation" : ""
       }`}
       initial="initial"
-      animate={isNew ? ["animate", "new"] : "animate"}
+      animate={
+        isWinningHand
+          ? ["animate", "winning"]
+          : isNew
+          ? ["animate", "new"]
+          : "animate"
+      }
       exit="exit"
       whileHover="hover"
       variants={cardVariants}

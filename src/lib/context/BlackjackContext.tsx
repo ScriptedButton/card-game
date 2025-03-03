@@ -89,6 +89,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   const [loadingStage, setLoadingStage] = useState<LoadingStage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
+  const [hasBlackjack, setHasBlackjack] = useState<boolean>(false);
 
   // API state
   const [resultId, setResultId] = useState<string | null>(null);
@@ -99,52 +100,93 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   const playerScore = calculateHandValue(playerCards || []);
   const dealerScore = calculateHandValue(dealerCards || []);
 
-  // Get a card from the deck
+  // Get a card from the deck - completely rewritten for reliability
   const getNextCard = async (retries = 2): Promise<Card> => {
+    // First, ensure we have a valid deck ID
     if (!resultId) {
-      throw new Error("No deck available");
+      console.log("No deck available, creating one...");
+      const response = await getShuffledDeck(1);
+
+      if (!response || !response.id) {
+        throw new Error("Failed to create a new deck");
+      }
+
+      console.log("Created new deck with ID:", response.id);
+      setResultId(response.id);
+      setAvailableCards(response.deck.cards);
+      setDrawnCardIndex(0);
+
+      if (response.deck.cards.length > 0) {
+        const firstCard = response.deck.cards[0];
+        setDrawnCardIndex(1); // Move to the next card
+        return firstCard;
+      } else {
+        throw new Error("New deck created but no cards available");
+      }
     }
 
-    // If we've used all available cards, fetch all cards again
-    if (drawnCardIndex >= availableCards.length) {
+    // If we have a deck ID but no cards or we've used all cards
+    if (!availableCards.length || drawnCardIndex >= availableCards.length) {
       try {
-        console.log("Fetching all cards for resultId:", resultId);
+        console.log("Fetching all cards for deck ID:", resultId);
         const allCards = await getAllCards(resultId);
 
         if (!allCards || !Array.isArray(allCards) || allCards.length === 0) {
-          throw new Error("No cards available");
+          // If getAllCards fails, create a new deck as fallback
+          console.log("No cards available from getAllCards, creating new deck");
+          const newDeckResponse = await getShuffledDeck(1);
+
+          if (!newDeckResponse || !newDeckResponse.id) {
+            throw new Error(
+              "Failed to create a new deck after card fetch failure"
+            );
+          }
+
+          setResultId(newDeckResponse.id);
+          setAvailableCards(newDeckResponse.deck.cards);
+          setDrawnCardIndex(0);
+
+          if (newDeckResponse.deck.cards.length > 0) {
+            const firstCard = newDeckResponse.deck.cards[0];
+            setDrawnCardIndex(1);
+            return firstCard;
+          } else {
+            throw new Error("New deck created but no cards available");
+          }
         }
 
         setAvailableCards(allCards);
         setDrawnCardIndex(0);
-        return allCards[0];
-      } catch (err) {
-        console.error("Error getting all cards:", err);
 
-        // If we still have retries left, try again after a short delay
+        const nextCard = allCards[0];
+        setDrawnCardIndex(1);
+        return nextCard;
+      } catch (error) {
+        console.error("Error getting cards:", error);
+
         if (retries > 0) {
-          console.log(`Retrying card fetch. Attempts remaining: ${retries}`);
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          console.log(`Retrying card fetch, attempts remaining: ${retries}`);
+          await new Promise((resolve) => setTimeout(resolve, 500));
           return getNextCard(retries - 1);
         }
 
         throw new Error(
           `Failed to get cards: ${
-            err instanceof Error ? err.message : "Unknown error"
+            error instanceof Error ? error.message : "Unknown error"
           }`
         );
       }
     }
 
+    // Normal case - we have a deck and cards available
     const card = availableCards[drawnCardIndex];
 
     if (!card || !card.rank || !card.suit) {
       console.error("Invalid card at index", drawnCardIndex, ":", card);
 
-      // If we still have retries left, try the next card
       if (retries > 0 && drawnCardIndex + 1 < availableCards.length) {
         console.log(
-          `Skipping invalid card and trying next one. Attempts remaining: ${retries}`
+          `Skipping invalid card, trying next one. Attempts remaining: ${retries}`
         );
         setDrawnCardIndex((prev) => prev + 1);
         return getNextCard(retries - 1);
@@ -164,20 +206,17 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       return;
     }
 
+    console.log("Starting new game with bet:", bet);
     setIsLoading(true);
     setLoadingStage("shuffling");
     setError(null);
-    setPlayerCards([]);
-    setDealerCards([]);
     setResult(null);
     setGameStatus("dealing");
     setCurrentBet(bet);
     setRetryCount(0);
 
     try {
-      console.log("Starting new game with bet:", bet);
-
-      // Get a new shuffled deck
+      // Always get a fresh deck for each new game
       const response = await getShuffledDeck(1);
 
       if (!response || !response.id) {
@@ -197,75 +236,81 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
         throw new Error("Not enough cards in the deck");
       }
 
-      console.log(
-        `Received ${cardArray.length} cards with deck ID: ${response.id}`
-      );
+      console.log("Received new deck with", cardArray.length, "cards");
+      console.log("Setting deck ID:", response.id);
 
+      // Set the deck info BEFORE trying to get cards
       setResultId(response.id);
       setAvailableCards(cardArray);
       setDrawnCardIndex(0);
 
-      // Deal initial cards
-      setLoadingStage("dealing");
-      const dealer: Card[] = [];
-      const player: Card[] = [];
+      // Now that we have the new cards ready, clear the previous hands
+      setPlayerCards([]);
+      setDealerCards([]);
 
-      // Make sure each card has rank and suit
-      for (let i = 0; i < 2; i++) {
-        const playerCard = cardArray[i];
-        const dealerCard = cardArray[i + 2];
+      // Wait a small amount to ensure the UI has updated
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
-        if (!playerCard || !playerCard.rank || !playerCard.suit) {
-          throw new Error(`Invalid player card at index ${i}`);
-        }
+      // Deal initial cards from the local card array instead of calling getNextCard
+      // This avoids any potential recursive state updates
+      const playerCard1 = cardArray[0];
+      const dealerCard1 = cardArray[1];
+      const playerCard2 = cardArray[2];
+      const dealerCard2 = cardArray[3];
 
-        if (!dealerCard || !dealerCard.rank || !dealerCard.suit) {
-          throw new Error(`Invalid dealer card at index ${i + 2}`);
-        }
-
-        player.push(playerCard);
-        dealer.push(dealerCard);
-      }
-
+      // Update our drawn card index to reflect that we've used 4 cards
       setDrawnCardIndex(4);
-      setPlayerCards(player);
-      setDealerCards(dealer);
 
-      console.log(
-        "Initial deal complete. Player cards:",
-        player,
-        "Dealer cards:",
-        dealer
-      );
+      // Add delay between dealing cards for visual effect
+      setPlayerCards([playerCard1]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setDealerCards([dealerCard1]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setPlayerCards([playerCard1, playerCard2]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      setDealerCards([dealerCard1, dealerCard2]);
 
       // Check for blackjack
-      if (isBlackjack(player) || isBlackjack(dealer)) {
-        console.log("Blackjack detected!");
-        await handleGameEnd(player);
+      const playerHand = [playerCard1, playerCard2];
+      const dealerHand = [dealerCard1, dealerCard2];
+
+      const playerHasBlackjack = isBlackjack(playerHand);
+      setHasBlackjack(playerHasBlackjack);
+
+      // If player has blackjack, end game immediately
+      if (playerHasBlackjack) {
+        console.log("Player has blackjack!");
+
+        // If dealer also has blackjack, it's a push
+        if (isBlackjack(dealerHand)) {
+          console.log("Dealer also has blackjack - Push");
+          setResult("push");
+          setGameStatus("complete");
+        } else {
+          // Player wins with blackjack
+          console.log("Player wins with blackjack!");
+          setResult("player");
+          setGameStatus("complete");
+
+          // Update balance - blackjack pays 3:2
+          const payoutAmount = calculatePayout(bet, true);
+          setBalance((prev) => prev + payoutAmount);
+        }
       } else {
+        // Game continues
         setGameStatus("playerTurn");
       }
-    } catch (err: any) {
-      console.error("Error starting new game:", err);
-
-      // If we have retries left, try again
-      if (retryCount < 3) {
-        setRetryCount((prev) => prev + 1);
-        console.log(`Retrying game start. Attempt ${retryCount + 1}/3`);
-
-        // Wait a moment before retrying
-        setTimeout(() => {
-          startNewGame(bet);
-        }, 1500);
-        return;
-      }
-
+    } catch (error) {
+      console.error("Error starting new game:", error);
       setError(
-        `Failed to start new game: ${
-          err.message || "Unknown error"
-        }. Please try again later.`
+        `Failed to start game: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
       );
-      setGameStatus("idle");
+      setGameStatus("idle"); // Reset game status if error occurs
     } finally {
       setIsLoading(false);
       setLoadingStage("idle");
@@ -622,13 +667,13 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     isLoading,
     loadingStage,
     error,
+    hasBlackjack,
     startNewGame,
     hit,
     stand,
     setBet,
     doubleDown,
     dismissError,
-    hasBlackjack: isBlackjack(playerCards) || isBlackjack(dealerCards),
   };
 
   return (
