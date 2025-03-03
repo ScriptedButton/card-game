@@ -125,11 +125,12 @@ export default function PlayingCard({
   const shine = calculateShine();
 
   const cardWrapperStyle: React.CSSProperties = {
-    opacity: isNew && !hasAnimated.current ? 0 : 1,
+    opacity: 1,
     transform: `scale(${isNew && !hasAnimated.current ? 0.8 : 1}) translateY(${
       isNew && !hasAnimated.current ? "50px" : "0"
     })`,
     transition: `opacity 0.8s ease, transform 0.8s ease`,
+    visibility: "visible",
   };
 
   if (animationDelay > 0) {
@@ -154,6 +155,8 @@ export default function PlayingCard({
             transform: isCardFlipped
               ? "rotateY(180deg)"
               : `rotateY(0deg) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+            opacity: 1,
+            visibility: "visible",
           }}
         >
           {card && (

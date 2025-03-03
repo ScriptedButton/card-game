@@ -654,21 +654,31 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       const winResult = determineWinner(currentPlayerCards, dealerCards);
       console.log("Game result determined:", winResult);
 
-      // Add detailed push check
-      if (
-        finalPlayerScore === finalDealerScore &&
-        !isBust(currentPlayerCards) &&
-        !isBust(dealerCards)
-      ) {
-        console.log(
-          `PUSH CONFIRMED: Player (${finalPlayerScore}) equals Dealer (${finalDealerScore})`
-        );
+      // Trust the determineWinner function's result and don't override it
+      // The determineWinner function has been fixed to properly handle all cases
+      setResult(winResult);
 
-        // Always set result to push when scores are equal and neither has bust
-        setResult("push");
-      } else {
-        // For non-push cases, set the result from determineWinner
-        setResult(winResult);
+      // Add additional validation to catch potential issues
+      // This is a safety check that will trigger an error if something is still wrong
+      if (
+        finalPlayerScore < finalDealerScore &&
+        finalDealerScore <= 21 &&
+        winResult === "player" &&
+        !isBlackjack(currentPlayerCards)
+      ) {
+        console.error(
+          "CRITICAL BUG: Game showing player win when dealer has higher score and hasn't busted!",
+          {
+            playerScore: finalPlayerScore,
+            dealerScore: finalDealerScore,
+            result: winResult,
+            playerCards: currentPlayerCards,
+            dealerCards: dealerCards,
+          }
+        );
+        setError(
+          "CRITICAL BUG: Game showing player win when dealer has higher score!"
+        );
       }
 
       // Mark the game as complete

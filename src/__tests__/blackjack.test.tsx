@@ -322,6 +322,41 @@ describe("Blackjack Utility Functions", () => {
     test("should handle empty or invalid hands gracefully", () => {
       expect(determineWinner([], [])).toBe("push");
     });
+
+    test("should determine dealer wins with 21 (not blackjack) against lower player score", () => {
+      // Dealer has 21 with 3 cards (not a blackjack)
+      const dealerHand = [
+        createCard("7", "spades"),
+        createCard("7", "hearts"),
+        createCard("7", "diamonds"),
+      ]; // 21 (not blackjack)
+
+      // Player has 20
+      const playerHand = [
+        createCard("10", "clubs"),
+        createCard("queen", "hearts"),
+      ]; // 20
+
+      // Dealer should win with higher score
+      expect(determineWinner(playerHand, dealerHand)).toBe("dealer");
+    });
+
+    test("should determine dealer wins with exact 21 against player 20", () => {
+      // Specific test for the bug case
+      const dealerHand = [
+        createCard("ace", "spades"),
+        createCard("king", "hearts"),
+        createCard("10", "clubs"),
+      ]; // 21 (not blackjack due to 3 cards)
+
+      const playerHand = [
+        createCard("10", "diamonds"),
+        createCard("10", "hearts"),
+      ]; // 20
+
+      const result = determineWinner(playerHand, dealerHand);
+      expect(result).toBe("dealer");
+    });
   });
 
   describe("shouldDealerHit", () => {

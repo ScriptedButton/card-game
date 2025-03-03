@@ -29,7 +29,7 @@ type GameResult = "player" | "dealer" | "push" | null;
 // Add a helper function to convert GameResult to ResultType
 const mapResultToResultType = (result: GameResult): ResultType => {
   if (result === "player") return "win";
-  if (result === "dealer") return "dealerWin";
+  if (result === "dealer") return "lose";
   if (result === "push") return "push";
   return "lose"; // Default fallback
 };
@@ -117,7 +117,37 @@ function FloatingCardSymbols() {
   );
 }
 
+// Add this component for client-side only confetti
+function ConfettiCelebration() {
+  const [confetti, setConfetti] = useState<React.ReactNode[]>([]);
+
+  useEffect(() => {
+    // Generate confetti only on the client
+    const confettiElements = Array.from({ length: 50 }).map((_, i) => (
+      <div
+        key={i}
+        className="confetti"
+        style={{
+          left: `${Math.random() * 100}%`,
+          top: "-10px",
+          width: `${Math.random() * 10 + 5}px`,
+          height: `${Math.random() * 10 + 5}px`,
+          animationDelay: `${Math.random() * 2}s`,
+          transform: `rotate(${Math.random() * 360}deg)`,
+        }}
+      ></div>
+    ));
+
+    setConfetti(confettiElements);
+  }, []);
+
+  return <div className="celebration">{confetti}</div>;
+}
+
 export default function GamePage() {
+  // Add client-side detection state
+  const [isClient, setIsClient] = useState(false);
+
   const {
     gameStatus,
     playerCards,
@@ -349,21 +379,6 @@ export default function GamePage() {
     currentBet,
   ]);
 
-  // Check if the current hand should have been a win for the dealer
-  useEffect(() => {
-    // This special check runs when viewing a completed game
-    if (gameStatus === "complete" && dealerScore === 21 && playerScore < 21) {
-      console.log(
-        "IMPORTANT: Dealer has 21, player has less - this should be a dealer win"
-      );
-      if (result === "player") {
-        console.error(
-          "CRITICAL BUG: Game showing player win when dealer has 21 and player has less!"
-        );
-      }
-    }
-  }, [gameStatus, dealerScore, playerScore, result]);
-
   // Log the result type determination separately from the render function
   useEffect(() => {
     if (showGameResult) {
@@ -403,6 +418,21 @@ export default function GamePage() {
     }
     return undefined;
   }, [result, gameStatus]);
+
+  // Check if the current hand should have been a win for the dealer
+  useEffect(() => {
+    // This special check runs when viewing a completed game
+    if (gameStatus === "complete" && dealerScore === 21 && playerScore < 21) {
+      console.log(
+        "IMPORTANT: Dealer has 21, player has less - this should be a dealer win"
+      );
+      if (resultType === "win") {
+        console.error(
+          "CRITICAL BUG: Game showing player win when dealer has 21 and player has less!"
+        );
+      }
+    }
+  }, [gameStatus, dealerScore, playerScore, resultType]);
 
   // Handle payout amount calculation based on bet and result
   const calculatePayout = () => {
@@ -731,6 +761,11 @@ export default function GamePage() {
     }
   }, [gameStatus, gameHistory]);
 
+  // Set up mouse tracking for table effects
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   return (
     <div
       className="game-table min-h-screen flex flex-col relative"
@@ -740,7 +775,7 @@ export default function GamePage() {
       <div className="table-edge"></div>
 
       {/* Client-side only background animations */}
-      {typeof window !== "undefined" && (
+      {isClient && (
         <>
           {/* Ambient light effect that follows cursor */}
           <div
@@ -859,24 +894,7 @@ export default function GamePage() {
       </div>
 
       {/* Confetti celebration for wins */}
-      {(resultType === "win" || hasBlackjack) && (
-        <div className="celebration">
-          {Array.from({ length: 50 }).map((_, i) => (
-            <div
-              key={i}
-              className="confetti"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: "-10px",
-                width: `${Math.random() * 10 + 5}px`,
-                height: `${Math.random() * 10 + 5}px`,
-                animationDelay: `${Math.random() * 2}s`,
-                transform: `rotate(${Math.random() * 360}deg)`,
-              }}
-            ></div>
-          ))}
-        </div>
-      )}
+      {(resultType === "win" || hasBlackjack) && <ConfettiCelebration />}
 
       {/* Game error display */}
       {error && (

@@ -158,6 +158,8 @@ export function determineWinner(
   const dealerValue = calculateHandValue(dealerCards);
   const playerHasBlackjack = isBlackjack(playerCards);
   const dealerHasBlackjack = isBlackjack(dealerCards);
+  const playerBust = isBust(playerCards);
+  const dealerBust = isBust(dealerCards);
 
   console.log("DETAILED HAND ANALYSIS:", {
     playerCards: playerCards.length,
@@ -166,12 +168,14 @@ export function determineWinner(
     dealerValue,
     playerHasBlackjack,
     dealerHasBlackjack,
+    playerBust,
+    dealerBust,
     isEqual: playerValue === dealerValue,
     dealerHigher: dealerValue > playerValue,
     playerHigher: playerValue > dealerValue,
   });
 
-  // Check for blackjack
+  // Step 1: Check for blackjack (takes precedence over all other scenarios)
   if (playerHasBlackjack && dealerHasBlackjack) {
     console.log("Both have blackjack - PUSH");
     return "push"; // Both have blackjack, it's a tie
@@ -187,36 +191,38 @@ export function determineWinner(
     return "dealer"; // Dealer has blackjack, dealer wins
   }
 
-  // Check for busts
-  if (isBust(playerCards)) {
+  // Step 2: Check for busts (player busting is an automatic loss regardless of dealer hand)
+  if (playerBust) {
     console.log("Player busted - DEALER WINS");
     return "dealer"; // Player busted, dealer wins
   }
 
-  if (isBust(dealerCards)) {
+  if (dealerBust) {
     console.log("Dealer busted - PLAYER WINS");
     return "player"; // Dealer busted, player wins
   }
 
-  // Check for equal scores first - this is a push
+  // Step 3: If neither busted, compare scores
+  // Equal scores is a push
   if (playerValue === dealerValue) {
     console.log(`PUSH DETECTED: Equal values (${playerValue}) - TIE GAME`);
     return "push"; // Equal values, it's a tie
   }
 
-  // Compare hand values
-  if (playerValue > dealerValue) {
-    console.log(
-      `Player value (${playerValue}) > Dealer value (${dealerValue}) - PLAYER WINS`
-    );
-    return "player"; // Player has higher value, player wins
-  }
-
+  // Compare hand values - dealer wins with higher value
   if (dealerValue > playerValue) {
     console.log(
       `Dealer value (${dealerValue}) > Player value (${playerValue}) - DEALER WINS`
     );
     return "dealer"; // Dealer has higher value, dealer wins
+  }
+
+  // Player wins with higher value
+  if (playerValue > dealerValue) {
+    console.log(
+      `Player value (${playerValue}) > Dealer value (${dealerValue}) - PLAYER WINS`
+    );
+    return "player"; // Player has higher value, player wins
   }
 
   // This should never happen, but added as a fallback
