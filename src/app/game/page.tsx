@@ -15,6 +15,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import GameResult from "@/components/GameResult";
 
 export default function GamePage() {
   const {
@@ -35,6 +37,7 @@ export default function GamePage() {
     setBet,
     doubleDown,
     dismissError,
+    hasBlackjack,
   } = useBlackjack();
 
   const [betAmount, setBetAmount] = useState<number>(10);
@@ -42,6 +45,12 @@ export default function GamePage() {
   const [showDebug, setShowDebug] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
   const logsRef = useRef<HTMLDivElement>(null);
+  const [showGameResult, setShowGameResult] = useState(false);
+
+  // Add refs at the top level for console methods
+  const originalLogRef = useRef<typeof console.log>(console.log);
+  const originalErrorRef = useRef<typeof console.error>(console.error);
+  const originalWarnRef = useRef<typeof console.warn>(console.warn);
 
   // Handle bet change
   const handleBetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,12 +65,13 @@ export default function GamePage() {
 
   // Add log message
   useEffect(() => {
-    const originalConsoleLog = console.log;
-    const originalConsoleError = console.error;
-    const originalConsoleWarn = console.warn;
+    // Store original console methods
+    originalLogRef.current = console.log;
+    originalErrorRef.current = console.error;
+    originalWarnRef.current = console.warn;
 
     console.log = (...args) => {
-      originalConsoleLog(...args);
+      originalLogRef.current(...args);
       const message = args
         .map((arg) =>
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
@@ -71,7 +81,7 @@ export default function GamePage() {
     };
 
     console.error = (...args) => {
-      originalConsoleError(...args);
+      originalErrorRef.current(...args);
       const message = args
         .map((arg) =>
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
@@ -81,7 +91,7 @@ export default function GamePage() {
     };
 
     console.warn = (...args) => {
-      originalConsoleWarn(...args);
+      originalWarnRef.current(...args);
       const message = args
         .map((arg) =>
           typeof arg === "object" ? JSON.stringify(arg) : String(arg)
@@ -91,9 +101,9 @@ export default function GamePage() {
     };
 
     return () => {
-      console.log = originalConsoleLog;
-      console.error = originalConsoleError;
-      console.warn = originalConsoleWarn;
+      console.log = originalLogRef.current;
+      console.error = originalErrorRef.current;
+      console.warn = originalWarnRef.current;
     };
   }, []);
 
@@ -119,6 +129,133 @@ export default function GamePage() {
     return () => clearInterval(interval);
   }, [gameStatus]);
 
+  // Show game result when game ends
+  useEffect(() => {
+    if (
+      gameStatus === "complete" &&
+      (result === "player" || result === "dealer" || result === "push")
+    ) {
+      console.log("Game completed with result:", {
+        gameStatus,
+        result,
+        playerScore,
+        dealerScore,
+        hasBlackjack,
+      });
+
+      setShowGameResult(true);
+
+      // Hide result after 3 seconds
+      const timer = setTimeout(() => {
+        setShowGameResult(false);
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [gameStatus, result, playerScore, dealerScore, hasBlackjack]);
+
+  // Check if the current hand should have been a win for the dealer
+  useEffect(() => {
+    // This special check runs when viewing a completed game
+    if (gameStatus === "complete" && dealerScore === 21 && playerScore < 21) {
+      console.log(
+        "IMPORTANT: Dealer has 21, player has less - this should be a dealer win"
+      );
+      if (result === "player") {
+        console.error(
+          "CRITICAL BUG: Game showing player win when dealer has 21 and player has less!"
+        );
+      }
+    }
+  }, [gameStatus, dealerScore, playerScore, result]);
+
+  // Log the result type determination separately from the render function
+  useEffect(() => {
+    if (showGameResult) {
+      console.log("Determining result type:", { result, hasBlackjack });
+
+      // Special case for dealer having 21
+      if (dealerScore === 21 && playerScore < 21) {
+        console.log("OVERRIDE: Dealer has 21, forcing correct 'lose' result");
+      }
+
+      // Regular result mapping log
+      const uiResult =
+        result === "player"
+          ? "win"
+          : result === "dealer"
+          ? "lose"
+          : result === "push"
+          ? "push"
+          : null;
+
+      console.log(
+        `Transforming game result "${result}" to UI result "${uiResult}"`
+      );
+
+      // Special case for blackjack
+      if (result === "player" && hasBlackjack) {
+        console.log("Player has blackjack!");
+      }
+    }
+  }, [showGameResult, result, dealerScore, playerScore, hasBlackjack]);
+
+  // Convert gameStatus to result type for GameResult component
+  const getResultType = () => {
+    if (!showGameResult) return null;
+
+    // FIXED: Make sure the result is correct for dealer having 21
+    if (dealerScore === 21 && playerScore < 21) {
+      return "lose";
+    }
+
+    // Regular result mapping
+    const uiResult =
+      result === "player"
+        ? "win"
+        : result === "dealer"
+        ? "lose"
+        : result === "push"
+        ? "push"
+        : null;
+
+    // Add special case for blackjack
+    if (result === "player" && hasBlackjack) {
+      return "blackjack";
+    }
+
+    return uiResult;
+  };
+
+  // Calculate payout amount for result display
+  const getPayoutAmount = () => {
+    if (result === "player") {
+      return hasBlackjack ? currentBet * 2.5 : currentBet * 2;
+    }
+    return 0;
+  };
+
+  // Card animation variants
+  const cardVariants = {
+    hidden: { opacity: 0, y: 50, scale: 0.8 },
+    visible: (i: number) => ({
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: "spring",
+        stiffness: 300,
+        damping: 20,
+        delay: i * 0.1,
+      },
+    }),
+    exit: {
+      opacity: 0,
+      y: -20,
+      transition: { duration: 0.3 },
+    },
+  };
+
   // Get loading message based on current stage
   const getLoadingMessage = () => {
     switch (loadingStage) {
@@ -142,368 +279,275 @@ export default function GamePage() {
     window.location.reload();
   };
 
-  return (
-    <main className="flex min-h-screen flex-col items-center game-table p-4">
-      <div className="w-full max-w-6xl">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <Link href="/">
-            <Button
-              variant="outline"
-              className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10"
+  // Render the dealer area with animations
+  const renderDealerArea = () => {
+    return (
+      <motion.div
+        className="flex flex-col items-center"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <h2 className="text-xl text-yellow-300 font-semibold mb-1">Dealer</h2>
+        <div className="flex justify-center mb-2">
+          <motion.span
+            className="text-lg text-white bg-black/50 px-3 py-1 rounded-full"
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            {dealerScore}
+          </motion.span>
+        </div>
+        <div className="flex flex-wrap gap-4 justify-center">
+          {dealerCards.map((card, index) => (
+            <PlayingCard
+              key={`dealer-${index}`}
+              card={
+                index === 0 ||
+                gameStatus === "dealerTurn" ||
+                gameStatus === "complete"
+                  ? card
+                  : undefined
+              }
+              isFlipped={
+                index !== 0 &&
+                gameStatus !== "dealerTurn" &&
+                gameStatus !== "complete"
+              }
+              animationDelay={index * 0.2}
+              isNew={
+                gameStatus === "dealing" ||
+                (gameStatus === "dealerTurn" && index >= dealerCards.length - 1)
+              }
+            />
+          ))}
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Render the player area with animations
+  const renderPlayerArea = () => {
+    return (
+      <motion.div
+        className="flex flex-col items-center"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <h2 className="text-xl text-yellow-300 font-semibold mb-1">Player</h2>
+        <div className="flex justify-center mb-2">
+          <motion.span
+            className="text-lg text-white bg-black/50 px-3 py-1 rounded-full"
+            initial={{ scale: 0.9 }}
+            animate={{
+              scale: 1,
+              backgroundColor:
+                playerScore > 21
+                  ? "rgba(220, 38, 38, 0.7)"
+                  : "rgba(0, 0, 0, 0.5)",
+            }}
+            transition={{ duration: 0.3 }}
+          >
+            {playerScore}
+          </motion.span>
+        </div>
+        <div className="flex flex-wrap gap-4 justify-center mb-6">
+          {playerCards.map((card, index) => (
+            <PlayingCard
+              key={`player-${index}`}
+              card={card}
+              animationDelay={index * 0.2 + 0.3}
+              isNew={
+                gameStatus === "dealing" ||
+                (gameStatus === "playerTurn" && index >= playerCards.length - 1)
+              }
+            />
+          ))}
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Render game controls with animations
+  const renderGameControls = () => {
+    return (
+      <motion.div
+        className="flex gap-3 justify-center mt-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+      >
+        {gameStatus === "playerTurn" && (
+          <>
+            <motion.button
+              className="bg-gradient-to-r from-green-600 to-green-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-green-500/20"
+              onClick={hit}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              Back to Home
-            </Button>
-          </Link>
-          <h1 className="text-4xl font-bold text-white text-center">
+              Hit
+            </motion.button>
+            <motion.button
+              className="bg-gradient-to-r from-red-600 to-red-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-red-500/20"
+              onClick={stand}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Stand
+            </motion.button>
+            {playerCards.length === 2 && balance >= currentBet && (
+              <motion.button
+                className="bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-blue-500/20"
+                onClick={doubleDown}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Double Down
+              </motion.button>
+            )}
+          </>
+        )}
+        {gameStatus === "complete" && (
+          <motion.button
+            className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-yellow-500/20"
+            onClick={handleStartGame}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 10 }}
+          >
+            Play Again
+          </motion.button>
+        )}
+      </motion.div>
+    );
+  };
+
+  return (
+    <main className="game-table flex min-h-screen flex-col items-center justify-between p-4 relative overflow-hidden">
+      <motion.header
+        className="w-full flex justify-between items-center p-2"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div>
+          <h1 className="text-3xl font-bold text-yellow-400 drop-shadow-[0_2px_3px_rgba(0,0,0,0.5)]">
             Blackjack 21
           </h1>
-          <div className="bg-green-950/50 px-4 py-2 rounded-lg border border-yellow-500/30">
-            <p className="text-yellow-400 text-xl font-bold">${balance}</p>
-          </div>
         </div>
+        <motion.div
+          className="text-white bg-black/40 px-4 py-2 rounded-lg shadow-md"
+          whileHover={{ scale: 1.05 }}
+          transition={{ duration: 0.2 }}
+        >
+          <span className="font-semibold text-yellow-300">Balance:</span> $
+          {balance.toFixed(2)}
+        </motion.div>
+      </motion.header>
 
-        {/* Debug Button */}
-        <div className="mb-4 flex justify-end">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-purple-500 text-purple-300 hover:bg-purple-500/10"
-            onClick={() => setShowDebug(!showDebug)}
-          >
-            <Bug className="h-4 w-4 mr-2" />
-            {showDebug ? "Hide Debug" : "Show Debug"}
-            {showDebug ? (
-              <ChevronUp className="h-4 w-4 ml-1" />
-            ) : (
-              <ChevronDown className="h-4 w-4 ml-1" />
-            )}
-          </Button>
-        </div>
+      <div className="flex flex-col items-center justify-center flex-grow w-full max-w-4xl">
+        {isLoading ? (
+          <LoadingIndicator />
+        ) : (
+          <>
+            {renderDealerArea()}
 
-        {/* Debug Info */}
-        {showDebug && (
-          <Card className="bg-gray-900/80 border-gray-700 p-4 mb-4 text-xs text-gray-300">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h3 className="font-bold mb-2 text-purple-300">Game State</h3>
-                <p>
-                  Game Status:{" "}
-                  <span className="text-yellow-300">{gameStatus}</span>
-                </p>
-                <p>
-                  Loading Stage:{" "}
-                  <span className="text-yellow-300">{loadingStage}</span>
-                </p>
-                <p>
-                  Is Loading:{" "}
-                  <span className="text-yellow-300">
-                    {isLoading ? "Yes" : "No"}
-                  </span>
-                </p>
-                <p>
-                  Result:{" "}
-                  <span className="text-yellow-300">{result || "None"}</span>
-                </p>
-                <p>
-                  Current Bet:{" "}
-                  <span className="text-yellow-300">${currentBet}</span>
-                </p>
-                <p>
-                  Player Score:{" "}
-                  <span className="text-yellow-300">{playerScore}</span>
-                </p>
-                <p>
-                  Dealer Score:{" "}
-                  <span className="text-yellow-300">{dealerScore}</span>
-                </p>
-              </div>
-              <div>
-                <h3 className="font-bold mb-2 text-purple-300">Cards</h3>
-                <p>
-                  Player Cards:{" "}
-                  <span className="text-yellow-300">{playerCards.length}</span>
-                </p>
-                <pre className="text-gray-400 text-xs overflow-auto max-h-16">
-                  {JSON.stringify(playerCards, null, 2)}
-                </pre>
-                <p>
-                  Dealer Cards:{" "}
-                  <span className="text-yellow-300">{dealerCards.length}</span>
-                </p>
-                <pre className="text-gray-400 text-xs overflow-auto max-h-16">
-                  {JSON.stringify(dealerCards, null, 2)}
-                </pre>
-              </div>
-            </div>
+            <div className="my-8 h-px w-3/4 bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent"></div>
 
-            <h3 className="font-bold mt-4 mb-2 text-purple-300">
-              Console Logs
-            </h3>
-            <div
-              ref={logsRef}
-              className="bg-black/50 p-2 rounded h-32 overflow-auto text-xs font-mono"
-            >
-              {logs.map((log, index) => {
-                const isError = log.startsWith("ERROR");
-                const isWarning = log.startsWith("WARN");
-                return (
-                  <div
-                    key={index}
-                    className={`${
-                      isError
-                        ? "text-red-400"
-                        : isWarning
-                        ? "text-yellow-400"
-                        : "text-green-300"
-                    }`}
-                  >
-                    {log}
-                  </div>
-                );
-              })}
-            </div>
+            {renderPlayerArea()}
 
-            <div className="mt-4 flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                onClick={() => setLogs([])}
+            {renderGameControls()}
+
+            {gameStatus === "idle" && (
+              <motion.div
+                className="mt-8"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.4 }}
               >
-                Clear Logs
-              </Button>
-              <Button
-                size="sm"
-                className="bg-purple-700 hover:bg-purple-800 text-white"
-                onClick={handleReload}
-              >
-                Reload Page
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* Game Area */}
-        <div className="bg-green-800/50 rounded-xl p-8 border-4 border-green-950/50 mb-8 relative">
-          {/* Loading Overlay */}
-          {isLoading && (
-            <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center backdrop-blur-sm z-10">
-              <div className="text-center">
-                <LoadingIndicator size="large" message={getLoadingMessage()} />
-
-                {/* Show cancel button if loading takes too long */}
-                {dealerTimer > 5 && loadingStage === "dealerPlay" && (
-                  <div className="mt-6">
-                    <Button
-                      variant="destructive"
-                      className="bg-red-700 hover:bg-red-800"
-                      onClick={handleReload}
+                <h2 className="text-xl text-yellow-300 mb-3 text-center">
+                  Place Your Bet
+                </h2>
+                <div className="flex gap-3 justify-center flex-wrap">
+                  {[5, 10, 25, 50, 100].map((chipValue) => (
+                    <motion.button
+                      key={chipValue}
+                      className={`chip-${chipValue} rounded-full w-16 h-16 flex items-center justify-center text-white font-bold shadow-lg`}
+                      style={{
+                        backgroundColor:
+                          chipValue === 5
+                            ? "#4299E1"
+                            : chipValue === 10
+                            ? "#48BB78"
+                            : chipValue === 25
+                            ? "#ED8936"
+                            : chipValue === 50
+                            ? "#9F7AEA"
+                            : "#F56565",
+                      }}
+                      onClick={() => setBetAmount(chipValue)}
+                      whileHover={{
+                        scale: 1.1,
+                        rotate: 5,
+                        boxShadow:
+                          "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+                      }}
+                      whileTap={{ scale: 0.9 }}
                     >
-                      <XCircle className="h-4 w-4 mr-2" /> Cancel & Reload
-                    </Button>
-                  </div>
+                      ${chipValue}
+                    </motion.button>
+                  ))}
+                </div>
+
+                {betAmount > 0 && (
+                  <motion.div
+                    className="mt-6 text-center"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <p className="text-lg text-white mb-3">
+                      Current Bet:{" "}
+                      <span className="text-yellow-300 font-bold">
+                        ${currentBet}
+                      </span>
+                    </p>
+                    <div className="flex gap-3 justify-center">
+                      <motion.button
+                        className="bg-gradient-to-r from-green-600 to-green-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg"
+                        onClick={handleStartGame}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        Deal Cards
+                      </motion.button>
+                      <motion.button
+                        className="bg-gradient-to-r from-red-600 to-red-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg"
+                        onClick={() => setBetAmount(0)}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                      >
+                        Clear Bet
+                      </motion.button>
+                    </div>
+                  </motion.div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Dealer Area */}
-          <div className="mb-12">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-white">Dealer</h2>
-              {gameStatus === "complete" && (
-                <div className="bg-green-900/70 px-3 py-1 rounded text-white">
-                  Score: {dealerScore}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-4 justify-center">
-              {dealerCards.map((card, index) => (
-                <PlayingCard
-                  key={`dealer-${index}`}
-                  card={
-                    index === 0 ||
-                    gameStatus === "dealerTurn" ||
-                    gameStatus === "complete"
-                      ? card
-                      : undefined
-                  }
-                  isFlipped={
-                    index !== 0 &&
-                    gameStatus !== "dealerTurn" &&
-                    gameStatus !== "complete"
-                  }
-                />
-              ))}
-              {dealerCards.length === 0 && (
-                <div className="h-[320px] w-[220px] flex items-center justify-center">
-                  <p className="text-white/50">Dealer cards will appear here</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Player Area */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-white">Your Hand</h2>
-              <div className="bg-green-900/70 px-3 py-1 rounded text-white">
-                Score: {playerScore}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-4 justify-center mb-6">
-              {playerCards.map((card, index) => (
-                <PlayingCard key={`player-${index}`} card={card} />
-              ))}
-              {playerCards.length === 0 && (
-                <div className="h-[320px] w-[220px] flex items-center justify-center">
-                  <p className="text-white/50">Your cards will appear here</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Game Controls */}
-        <Card className="bg-green-950/80 border-green-900 p-6">
-          {error && (
-            <div className="bg-red-900/50 border border-red-700 text-red-100 p-4 rounded mb-6 flex items-start gap-3">
-              <AlertCircle className="text-red-400 h-5 w-5 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="mb-2">{error}</p>
-                <div className="flex gap-3">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-red-500 text-red-300 hover:bg-red-950"
-                    onClick={dismissError}
-                  >
-                    Dismiss
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-red-700 hover:bg-red-800 text-white"
-                    onClick={handleReload}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" /> Reload Page
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {gameStatus === "idle" && (
-            <div className="flex flex-col items-center gap-4">
-              <h3 className="text-xl font-bold text-white mb-2">
-                Place Your Bet
-              </h3>
-              <div className="flex items-center gap-4 mb-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setBetAmount(Math.max(5, betAmount - 5))}
-                  className="text-white border-white/20"
-                >
-                  -
-                </Button>
-                <input
-                  type="number"
-                  value={betAmount}
-                  onChange={handleBetChange}
-                  className="w-24 text-center bg-green-900 text-white border border-yellow-500/30 rounded p-2"
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => setBetAmount(Math.min(balance, betAmount + 5))}
-                  className="text-white border-white/20"
-                >
-                  +
-                </Button>
-              </div>
-              <Button
-                onClick={handleStartGame}
-                className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-8 py-4 text-lg"
-                disabled={isLoading || betAmount <= 0 || betAmount > balance}
-              >
-                {isLoading ? "Dealing..." : "Deal Cards"}
-              </Button>
-            </div>
-          )}
-
-          {gameStatus === "playerTurn" && (
-            <div className="flex flex-wrap justify-center gap-4">
-              <Button
-                onClick={hit}
-                className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-8 py-4"
-                disabled={isLoading}
-              >
-                Hit
-              </Button>
-              <Button
-                onClick={stand}
-                className="bg-red-500 hover:bg-red-600 text-white font-bold px-8 py-4"
-                disabled={isLoading}
-              >
-                Stand
-              </Button>
-              {playerCards.length === 2 && balance >= currentBet && (
-                <Button
-                  onClick={doubleDown}
-                  className="bg-purple-500 hover:bg-purple-600 text-white font-bold px-8 py-4"
-                  disabled={isLoading}
-                >
-                  Double Down
-                </Button>
-              )}
-              <div className="w-full text-center mt-2">
-                <p className="text-white/70">Current bet: ${currentBet}</p>
-              </div>
-            </div>
-          )}
-
-          {gameStatus === "dealerTurn" && !isLoading && (
-            <div className="text-center">
-              <p className="text-white text-xl mb-4">Dealer is playing...</p>
-              <div className="animate-pulse bg-green-800/50 rounded-full h-4 w-32 mx-auto"></div>
-              {dealerTimer > 5 && (
-                <Button
-                  className="mt-6 bg-red-700 hover:bg-red-800"
-                  onClick={handleReload}
-                >
-                  <XCircle className="h-4 w-4 mr-2" /> Cancel & Reload
-                </Button>
-              )}
-            </div>
-          )}
-
-          {gameStatus === "complete" && (
-            <div className="flex flex-col items-center gap-4">
-              <div
-                className={`text-2xl font-bold mb-2 ${
-                  result === "player"
-                    ? "text-green-400"
-                    : result === "dealer"
-                    ? "text-red-400"
-                    : "text-yellow-400"
-                }`}
-              >
-                {result === "player"
-                  ? "You Win!"
-                  : result === "dealer"
-                  ? "Dealer Wins"
-                  : "Push (Tie)"}
-              </div>
-              <Button
-                onClick={() => handleStartGame()}
-                className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-8 py-4"
-                disabled={isLoading}
-              >
-                Play Again
-              </Button>
-            </div>
-          )}
-        </Card>
+              </motion.div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Game result component */}
+      <AnimatePresence>
+        {showGameResult && (
+          <GameResult result={getResultType()} payout={getPayoutAmount()} />
+        )}
+      </AnimatePresence>
     </main>
   );
 }

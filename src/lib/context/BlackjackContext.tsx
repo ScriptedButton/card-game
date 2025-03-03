@@ -20,6 +20,7 @@ import {
   isBlackjack,
   isBust,
   shouldDealerHit,
+  calculatePayout,
 } from "@/lib/utils/blackjackUtils";
 
 type GameStatus = "idle" | "dealing" | "playerTurn" | "dealerTurn" | "complete";
@@ -45,6 +46,7 @@ interface BlackjackContextType {
   isLoading: boolean;
   loadingStage: LoadingStage;
   error: string | null;
+  hasBlackjack: boolean;
 
   // Game actions
   startNewGame: (bet?: number) => Promise<void>;
@@ -239,7 +241,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       // Check for blackjack
       if (isBlackjack(player) || isBlackjack(dealer)) {
         console.log("Blackjack detected!");
-        await handleGameEnd();
+        await handleGameEnd(player);
       } else {
         setGameStatus("playerTurn");
       }
@@ -293,7 +295,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       // Check if player busts
       if (isBust(updatedPlayerCards)) {
         console.log("Player busts!");
-        await handleGameEnd();
+        await handleGameEnd(updatedPlayerCards);
       }
     } catch (err: any) {
       console.error("Error hitting:", err);
@@ -344,6 +346,15 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     if (gameStatus !== "playerTurn" || playerCards.length > 2) {
       console.warn(
         "Double down called in invalid state or with more than 2 cards"
+      );
+      return;
+    }
+
+    // Check if the hand value is eligible for doubling (9, 10, or 11)
+    const handValue = calculateHandValue(playerCards);
+    if (![9, 10, 11].includes(handValue)) {
+      setError(
+        "According to standard rules, you can only double down on 9, 10, or 11"
       );
       return;
     }
@@ -426,53 +437,64 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
       // If we already have 17+, no need to draw more cards
       if (currentScore >= 17) {
-        console.log(
-          "Dealer already has 17 or more, standing with:",
-          currentScore
-        );
-      } else {
-        // The dealer needs to draw cards to reach at least 17
-        console.log("Dealer needs to draw more cards");
-
-        // Safety limit - dealer can draw at most 5 more cards (very unlikely to need more)
-        const maxCardsToAdd = 5;
-        let cardsAdded = 0;
-
-        // Keep drawing cards until dealer has 17+ or hits the limit
-        while (currentScore < 17 && cardsAdded < maxCardsToAdd) {
-          try {
-            console.log(`Dealer drawing card #${cardsAdded + 1}...`);
-            const nextCard = await getNextCard();
-
-            if (!nextCard || !nextCard.rank || !nextCard.suit) {
-              console.error("Invalid card received:", nextCard);
-              throw new Error("Failed to get valid card for dealer");
-            }
-
-            // Add the card to dealer's hand
-            currentDealerCards = [...currentDealerCards, nextCard];
-            currentScore = calculateHandValue(currentDealerCards);
-            cardsAdded++;
-
-            // Update UI immediately after each card
-            setDealerCards(currentDealerCards);
-            console.log(
-              `Dealer drew: ${nextCard.rank} of ${nextCard.suit}, new score: ${currentScore}`
-            );
-
-            // Short pause between cards for animation
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          } catch (cardError) {
-            console.error("Error getting card for dealer:", cardError);
-            // Break the loop on error instead of failing completely
-            break;
-          }
+        // Check for soft 17 to determine if dealer should still hit
+        if (shouldDealerHit(currentDealerCards)) {
+          console.log(
+            "Dealer has soft 17, will hit according to standard rules"
+          );
+        } else {
+          console.log(
+            "Dealer already has 17 or more, standing with:",
+            currentScore
+          );
+          console.log("Dealer stands with hard 17 or higher");
         }
-
-        console.log(
-          `Dealer finished drawing with ${cardsAdded} new cards, final score: ${currentScore}`
-        );
       }
+
+      // The dealer needs to draw cards to reach at least 17 or stand on hard 17+
+      console.log("Checking if dealer needs to draw more cards");
+
+      // Safety limit - dealer can draw at most 5 more cards (very unlikely to need more)
+      const maxCardsToAdd = 5;
+      let cardsAdded = 0;
+
+      // Keep drawing cards until dealer should stand based on rules
+      while (
+        shouldDealerHit(currentDealerCards) &&
+        cardsAdded < maxCardsToAdd
+      ) {
+        try {
+          console.log(`Dealer drawing card #${cardsAdded + 1}...`);
+          const nextCard = await getNextCard();
+
+          if (!nextCard || !nextCard.rank || !nextCard.suit) {
+            console.error("Invalid card received:", nextCard);
+            throw new Error("Failed to get valid card for dealer");
+          }
+
+          // Add the card to dealer's hand
+          currentDealerCards = [...currentDealerCards, nextCard];
+          currentScore = calculateHandValue(currentDealerCards);
+          cardsAdded++;
+
+          // Update UI immediately after each card
+          setDealerCards(currentDealerCards);
+          console.log(
+            `Dealer drew: ${nextCard.rank} of ${nextCard.suit}, new score: ${currentScore}`
+          );
+
+          // Short pause between cards for animation
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        } catch (cardError) {
+          console.error("Error getting card for dealer:", cardError);
+          // Break the loop on error instead of failing completely
+          break;
+        }
+      }
+
+      console.log(
+        `Dealer finished drawing with ${cardsAdded} new cards, final score: ${currentScore}`
+      );
 
       // Set the final dealer cards state
       setDealerCards(currentDealerCards);
@@ -495,32 +517,9 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       // Use setTimeout to ensure state updates before proceeding
       setTimeout(() => {
         try {
-          // Determine the game outcome
-          const winResult = determineWinner(playerCards, dealerCards);
-          console.log("Game result:", winResult);
-
-          // Update game state
-          setResult(winResult);
-          setGameStatus("complete");
-
-          // Update balance based on result
-          if (winResult === "player") {
-            // Blackjack pays 3:2
-            if (isBlackjack(playerCards)) {
-              const winnings = Math.floor(currentBet * 1.5);
-              console.log(`Player won with blackjack! Winnings: ${winnings}`);
-              setBalance((prev) => prev + currentBet + winnings);
-            } else {
-              console.log(`Player won! Winnings: ${currentBet}`);
-              setBalance((prev) => prev + currentBet * 2);
-            }
-          } else if (winResult === "push") {
-            console.log("Push (tie) - bet returned");
-            setBalance((prev) => prev + currentBet);
-          }
-          // Dealer win - no additional action needed
-
-          console.log("Game completely finished");
+          // Instead of determining winner directly, use handleGameEnd for consistency
+          console.log("Dealer play complete, ending game via handleGameEnd");
+          handleGameEnd();
         } catch (finalError) {
           console.error("Error in dealer play final handling:", finalError);
           setError("Error finalizing game");
@@ -531,13 +530,24 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   };
 
   // Handle the end of the game and determine the winner
-  const handleGameEnd = async () => {
+  const handleGameEnd = async (updatedPlayerCards?: Card[]) => {
     try {
       console.log("Handling game end...");
 
+      // Use the updated player cards if provided, otherwise use state
+      const currentPlayerCards = updatedPlayerCards || playerCards;
+
+      // Add extra debugging
+      console.log("Final cards at game end:", {
+        playerCards: currentPlayerCards.map((c) => `${c.rank} of ${c.suit}`),
+        dealerCards: dealerCards.map((c) => `${c.rank} of ${c.suit}`),
+        playerScore: calculateHandValue(currentPlayerCards),
+        dealerScore: calculateHandValue(dealerCards),
+      });
+
       // Determine the winner
-      const winResult = determineWinner(playerCards, dealerCards);
-      console.log("Game result:", winResult);
+      const winResult = determineWinner(currentPlayerCards, dealerCards);
+      console.log("Game result determined:", winResult);
 
       // Update state
       setResult(winResult);
@@ -547,18 +557,21 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
       // Update balance based on result
       if (winResult === "player") {
-        // Blackjack pays 3:2
-        if (isBlackjack(playerCards)) {
-          const winnings = Math.floor(currentBet * 1.5);
-          console.log(`Player won with blackjack! Winnings: ${winnings}`);
-          setBalance((prev) => prev + currentBet + winnings);
-        } else {
-          console.log(`Player won! Winnings: ${currentBet}`);
-          setBalance((prev) => prev + currentBet * 2);
-        }
+        // Use the new calculatePayout function for correct payout calculation
+        const payoutAmount = calculatePayout(
+          currentBet,
+          isBlackjack(currentPlayerCards)
+        );
+        const payoutDescription = isBlackjack(currentPlayerCards)
+          ? "with blackjack (3:2)"
+          : "regular win (1:1)";
+        console.log(`Player won ${payoutDescription}! Payout: ${payoutAmount}`);
+        setBalance((prev) => prev + payoutAmount);
       } else if (winResult === "push") {
         console.log("Push (tie) - bet returned");
         setBalance((prev) => prev + currentBet);
+      } else {
+        console.log("Dealer won - player loses bet");
       }
       // No need to update balance for dealer win as bet was already deducted
     } catch (err) {
@@ -615,6 +628,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     setBet,
     doubleDown,
     dismissError,
+    hasBlackjack: isBlackjack(playerCards) || isBlackjack(dealerCards),
   };
 
   return (

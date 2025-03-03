@@ -1,39 +1,83 @@
 "use client";
 
-import React, { useState } from "react";
-import { Card as CardUI } from "@/components/ui/card";
+import React, { useState, useEffect } from "react";
 import { Card } from "@/lib/services/cardApi";
 import {
-  getCardDisplay,
-  getSuitColor,
   getSuitSymbol,
+  getSuitColor,
+  getCardDisplay,
 } from "@/lib/utils/cardUtils";
+import { motion } from "framer-motion";
 
-interface PlayingCardProps {
+export interface PlayingCardProps {
   card?: Card;
   isFlipped?: boolean;
-  onClick?: () => void;
-  backContent?: React.ReactNode;
-  className?: string;
-  isLoading?: boolean;
-  hasError?: boolean;
+  animationDelay?: number;
+  isNew?: boolean;
+  faceUp?: boolean;
 }
 
-const PlayingCard: React.FC<PlayingCardProps> = ({
+export default function PlayingCard({
   card,
   isFlipped = false,
-  onClick,
-  backContent,
-  className = "",
-  isLoading = false,
-  hasError = false,
-}) => {
-  const [flipped, setFlipped] = useState(isFlipped);
+  animationDelay = 0,
+  isNew = false,
+  faceUp = true,
+}: PlayingCardProps) {
+  const [isInitialMount, setIsInitialMount] = useState(true);
+  const [isCardFlipped, setIsCardFlipped] = useState(isFlipped);
 
-  const handleClick = () => {
-    if (isLoading || hasError) return;
-    setFlipped(!flipped);
-    if (onClick) onClick();
+  useEffect(() => {
+    if (isInitialMount) {
+      setIsInitialMount(false);
+    }
+
+    setIsCardFlipped(!faceUp);
+  }, [faceUp, isInitialMount]);
+
+  // Animation variants
+  const cardVariants = {
+    initial: {
+      opacity: 0,
+      y: 50,
+      scale: 0.8,
+    },
+    animate: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: "spring",
+        stiffness: 300,
+        damping: 20,
+        delay: animationDelay,
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: -20,
+      transition: { duration: 0.3 },
+    },
+    hover: {
+      scale: 1.05,
+      boxShadow:
+        "0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1)",
+      transition: { duration: 0.2 },
+    },
+    new: {
+      scale: [1, 1.1, 1],
+      opacity: [1, 1, 1],
+      boxShadow: [
+        "0 0 0 rgba(255, 215, 0, 0)",
+        "0 0 15px rgba(255, 215, 0, 0.7)",
+        "0 0 0 rgba(255, 215, 0, 0)",
+      ],
+      transition: {
+        duration: 1.2,
+        times: [0, 0.5, 1],
+        delay: 0.2 + animationDelay,
+      },
+    },
   };
 
   // Only try to access card properties if card is defined
@@ -41,95 +85,64 @@ const PlayingCard: React.FC<PlayingCardProps> = ({
   const suitColorClass = card && card.suit ? getSuitColor(card.suit) : "";
   const rankDisplay = card && card.rank ? getCardDisplay(card.rank) : "";
 
-  const renderCardContent = () => {
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <div className="w-12 h-12 border-t-2 border-yellow-500 border-solid rounded-full animate-spin"></div>
-        </div>
-      );
-    }
-
-    if (hasError) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full text-center p-4">
-          <div className="text-red-500 text-5xl mb-4">!</div>
-          <p className="text-red-400">Card error</p>
-        </div>
-      );
-    }
-
-    if (!card || !card.rank || !card.suit) {
-      return (
-        <div className="flex items-center justify-center h-full text-center">
-          <p className="text-gray-500">No card available</p>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        <div className={`text-xl font-bold ${suitColorClass}`}>
-          {rankDisplay}
-          <span className="ml-1">{suitSymbol}</span>
-        </div>
-        <div className={`text-center text-6xl ${suitColorClass}`}>
-          {suitSymbol}
-        </div>
-        <div
-          className={`text-xl font-bold self-end rotate-180 ${suitColorClass}`}
-        >
-          {rankDisplay}
-          <span className="ml-1">{suitSymbol}</span>
-        </div>
-      </>
-    );
-  };
-
   return (
-    <div
-      className={`perspective-1000 w-[220px] h-[320px] cursor-pointer ${className} ${
-        isLoading || hasError ? "cursor-not-allowed" : ""
+    <motion.div
+      className={`perspective-1000 w-[220px] h-[320px] cursor-pointer ${
+        isNew ? "deal-animation" : ""
       }`}
-      onClick={handleClick}
+      initial="initial"
+      animate={isNew ? ["animate", "new"] : "animate"}
+      exit="exit"
+      whileHover="hover"
+      variants={cardVariants}
     >
       <div
         className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${
-          flipped ? "rotate-y-180" : ""
+          isCardFlipped ? "rotate-y-180" : ""
         }`}
       >
         {/* Card Front */}
-        <CardUI
-          className={`absolute w-full h-full backface-hidden ${
-            hasError ? "bg-red-900/20" : "bg-white"
-          } border-2 ${
-            hasError ? "border-red-600" : "border-gray-200"
-          } shadow-lg ${
-            flipped ? "rotate-y-180 pointer-events-none" : ""
-          } flex flex-col justify-between p-4`}
+        <div
+          className={`absolute w-full h-full backface-hidden bg-white border-2 border-gray-200 shadow-lg ${
+            isCardFlipped ? "rotate-y-180 pointer-events-none" : ""
+          } flex flex-col justify-between p-4 rounded-xl playing-card-front`}
         >
-          {renderCardContent()}
-        </CardUI>
+          {card && (
+            <>
+              <div
+                className={`text-xl font-bold ${suitColorClass} flex items-center top-content`}
+              >
+                {rankDisplay}
+                <span className="ml-1">{suitSymbol}</span>
+              </div>
+              <div
+                className={`text-center text-7xl ${suitColorClass} flex-grow flex items-center justify-center card-symbol`}
+              >
+                {suitSymbol}
+              </div>
+              <div
+                className={`text-xl font-bold self-end rotate-180 ${suitColorClass} flex items-center bottom-content`}
+              >
+                {rankDisplay}
+                <span className="ml-1">{suitSymbol}</span>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Card Back */}
-        <CardUI
+        <div
           className={`absolute w-full h-full backface-hidden bg-green-800 border-2 border-gray-200 shadow-lg rotate-y-180 ${
-            flipped ? "" : "pointer-events-none"
-          } flex flex-col justify-center items-center p-4`}
+            isCardFlipped ? "" : "pointer-events-none"
+          } flex flex-col justify-center items-center p-4 rounded-xl playing-card-back`}
         >
-          {backContent || (
-            <div className="h-full w-full flex items-center justify-center">
-              <div className="w-4/5 h-4/5 border-4 border-double border-yellow-300 rounded-lg flex items-center justify-center">
-                <div className="text-yellow-300 text-2xl font-bold">
-                  Card Game
-                </div>
-              </div>
+          <div className="h-full w-full flex items-center justify-center">
+            <div className="w-4/5 h-4/5 border-4 border-double border-yellow-300 rounded-lg flex items-center justify-center pattern-background">
+              <div className="text-yellow-300 text-2xl font-bold">21</div>
             </div>
-          )}
-        </CardUI>
+          </div>
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
-};
-
-export default PlayingCard;
+}

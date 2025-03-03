@@ -68,11 +68,12 @@ export function isBust(cards: Card[]): boolean {
 }
 
 /**
- * Check if a hand is a blackjack (an ace and a 10-value card)
+ * Check if a hand is a blackjack (an ace and a 10-value card as the initial two cards)
  * @param cards - Array of cards in the hand
  * @returns True if the hand is a blackjack, false otherwise
  */
 export function isBlackjack(cards: Card[]): boolean {
+  // A blackjack must be exactly 2 cards
   if (!cards || !Array.isArray(cards) || cards.length !== 2) {
     return false;
   }
@@ -82,6 +83,7 @@ export function isBlackjack(cards: Card[]): boolean {
     return false;
   }
 
+  // Must have exactly one Ace and one 10-value card (10, J, Q, K)
   const hasAce = cards.some(
     (card) => card && card.rank && card.rank.toLowerCase() === "ace"
   );
@@ -92,7 +94,10 @@ export function isBlackjack(cards: Card[]): boolean {
       ["10", "jack", "queen", "king"].includes(card.rank.toLowerCase())
   );
 
-  return hasAce && hasTenCard;
+  // The value must be exactly 21
+  const handValue = calculateHandValue(cards);
+
+  return hasAce && hasTenCard && handValue === 21;
 }
 
 /**
@@ -105,6 +110,12 @@ export function determineWinner(
   playerCards: Card[],
   dealerCards: Card[]
 ): "player" | "dealer" | "push" {
+  // Add debug logging
+  console.log("determineWinner called with:", {
+    playerCards: playerCards.map((c) => `${c.rank} of ${c.suit}`),
+    dealerCards: dealerCards.map((c) => `${c.rank} of ${c.suit}`),
+  });
+
   // Handle empty arrays
   if (
     !playerCards ||
@@ -112,6 +123,7 @@ export function determineWinner(
     !playerCards.length ||
     !dealerCards.length
   ) {
+    console.warn("determineWinner: Empty card arrays, returning push");
     return "push";
   }
 
@@ -120,37 +132,56 @@ export function determineWinner(
   const playerHasBlackjack = isBlackjack(playerCards);
   const dealerHasBlackjack = isBlackjack(dealerCards);
 
+  console.log("Hand values:", {
+    playerValue,
+    dealerValue,
+    playerHasBlackjack,
+    dealerHasBlackjack,
+  });
+
   // Check for blackjack
   if (playerHasBlackjack && dealerHasBlackjack) {
+    console.log("Both have blackjack - PUSH");
     return "push"; // Both have blackjack, it's a tie
   }
 
   if (playerHasBlackjack) {
+    console.log("Player has blackjack - PLAYER WINS");
     return "player"; // Player has blackjack, player wins
   }
 
   if (dealerHasBlackjack) {
+    console.log("Dealer has blackjack - DEALER WINS");
     return "dealer"; // Dealer has blackjack, dealer wins
   }
 
   // Check for busts
   if (isBust(playerCards)) {
+    console.log("Player busted - DEALER WINS");
     return "dealer"; // Player busted, dealer wins
   }
 
   if (isBust(dealerCards)) {
+    console.log("Dealer busted - PLAYER WINS");
     return "player"; // Dealer busted, player wins
   }
 
   // Compare hand values
   if (playerValue > dealerValue) {
+    console.log(
+      `Player value (${playerValue}) > Dealer value (${dealerValue}) - PLAYER WINS`
+    );
     return "player"; // Player has higher value, player wins
   }
 
   if (dealerValue > playerValue) {
+    console.log(
+      `Dealer value (${dealerValue}) > Player value (${playerValue}) - DEALER WINS`
+    );
     return "dealer"; // Dealer has higher value, dealer wins
   }
 
+  console.log(`Equal values (${playerValue}) - PUSH`);
   return "push"; // Equal values, it's a tie
 }
 
@@ -158,13 +189,61 @@ export function determineWinner(
  * Determine if the dealer should hit based on standard rules
  * (dealer hits on 16 or lower, stands on 17 or higher)
  * @param dealerCards - Array of dealer's cards
+ * @param hitOnSoft17 - Whether the dealer should hit on soft 17 (true follows most casino standards)
  * @returns True if the dealer should hit, false otherwise
  */
-export function shouldDealerHit(dealerCards: Card[]): boolean {
+export function shouldDealerHit(
+  dealerCards: Card[],
+  hitOnSoft17: boolean = true
+): boolean {
   if (!dealerCards || !Array.isArray(dealerCards) || dealerCards.length === 0) {
     return false;
   }
 
   const dealerValue = calculateHandValue(dealerCards);
-  return dealerValue < 17;
+
+  // Always hit if below 17
+  if (dealerValue < 17) {
+    return true;
+  }
+
+  // Check for soft 17 (Ace counted as 11 + cards totaling 6)
+  if (hitOnSoft17 && dealerValue === 17) {
+    // A hand is "soft" if it contains an Ace counted as 11
+    const hasAce = dealerCards.some(
+      (card) => card && card.rank && card.rank.toLowerCase() === "ace"
+    );
+
+    // Check if the hand would still be valid if we count one Ace as 1 instead of 11
+    if (hasAce) {
+      // Calculate hand value with one Ace counted as 1 instead of 11
+      const alternateValue = dealerValue - 10;
+
+      // If the alternate value is 7, that means we have a soft 17
+      return alternateValue === 7;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Calculate the correct payout amount for a winning hand
+ * @param bet - The original bet amount
+ * @param isPlayerBlackjack - Whether the player has a blackjack
+ * @returns The total amount to add to the player's balance (including original bet)
+ */
+export function calculatePayout(
+  bet: number,
+  isPlayerBlackjack: boolean
+): number {
+  // For blackjack (3:2 payout)
+  if (isPlayerBlackjack) {
+    // Player gets their bet back + 1.5 times their bet as winnings
+    return bet + Math.floor(bet * 1.5);
+  }
+
+  // For regular win (1:1 payout)
+  // Player gets their bet back + their bet as winnings
+  return bet * 2;
 }

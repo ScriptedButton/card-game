@@ -149,4 +149,212 @@
 .game-table {
   background-color: #0c4a25; /* Dark green background */
   background-image: radial-gradient(circle, #166d39 0%, #0c4a25 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.game-table::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.05) 25%,
+      transparent 25%
+    ),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.05) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 30px 30px;
+  background-position: 0 0, 0 15px, 15px -15px, -15px 0px;
+  pointer-events: none;
+}
+
+/* Card Styling Enhancements */
+.playing-card-front {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  border-radius: 12px;
+}
+
+.playing-card-back {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0c4a25 0%, #083115 100%);
+}
+
+.pattern-background {
+  background-image: repeating-linear-gradient(
+      45deg,
+      rgba(255, 215, 0, 0.1) 0,
+      rgba(255, 215, 0, 0.1) 1px,
+      transparent 0,
+      transparent 50%
+    ),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 215, 0, 0.1) 0,
+      rgba(255, 215, 0, 0.1) 1px,
+      transparent 0,
+      transparent 50%
+    );
+  background-size: 10px 10px;
+}
+
+.card-symbol {
+  filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.1));
+  transform-origin: center;
+  animation: pulse 3s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.top-content,
+.bottom-content {
+  z-index: 1;
+  position: relative;
+}
+
+/* Result Animation */
+@keyframes celebrationConfetti {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 100% 100%;
+  }
+}
+
+.celebration-win {
+  animation: celebrationConfetti 5s linear infinite;
+  background-image: radial-gradient(
+      circle,
+      rgba(255, 215, 0, 0.15) 2px,
+      transparent 2px
+    ),
+    radial-gradient(circle, rgba(255, 215, 0, 0.15) 1.5px, transparent 1.5px);
+  background-size: 30px 30px;
+  background-position: 0 0, 15px 15px;
+}
+
+/* Button Animations */
+.animate-button-hover {
+  transition: all 0.3s ease;
+  transform-origin: center;
+}
+
+.animate-button-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2),
+    0 4px 6px -2px rgba(0, 0, 0, 0.1);
+}
+
+/* Score Display Animation */
+@keyframes scoreUpdate {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.score-update {
+  animation: scoreUpdate 0.5s ease-in-out;
+}
+
+/* Deal Animation */
+@keyframes dealCard {
+  from {
+    opacity: 0;
+    transform: translateY(-100px) rotate(-10deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+
+.deal-animation {
+  animation: dealCard 0.5s ease-out forwards;
+}
+
+/* Dealer Play Animation */
+.dealer-thinking {
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+/* Chip Animations */
+.chip {
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.chip::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+}
+
+@keyframes chipSpin {
+  from {
+    transform: rotateY(0);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+.chip-animation {
+  animation: chipSpin 1.5s linear;
+}
+
+/* Result Animations */
+.result-text {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.result-win {
+  animation: winPulse 2s infinite;
+}
+
+@keyframes winPulse {
+  0% {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(255, 255, 0, 0.8),
+      0 0 30px rgba(255, 215, 0, 0.6);
+  }
+  100% {
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
 }
