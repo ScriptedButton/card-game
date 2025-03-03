@@ -414,10 +414,24 @@ export default function GamePage() {
   const resultType = useMemo(() => {
     if (gameStatus === "complete") {
       console.log("Computing result type once for:", result);
+
+      // Additional validation for equal scores
+      if (
+        playerScore === dealerScore &&
+        !isBust(playerCards) &&
+        !isBust(dealerCards)
+      ) {
+        console.log(
+          "EQUAL SCORES DETECTED: Forcing push result for equal scores:",
+          playerScore
+        );
+        return "push";
+      }
+
       return mapResultToResultType(result);
     }
     return undefined;
-  }, [result, gameStatus]);
+  }, [result, gameStatus, playerScore, dealerScore, playerCards, dealerCards]);
 
   // Check if the current hand should have been a win for the dealer
   useEffect(() => {

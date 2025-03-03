@@ -28,12 +28,30 @@ const GameResult: React.FC<GameResultProps> = ({
   hasBlackjack,
   currentBet,
 }) => {
+  // Safety check: Override result for equal scores
+  let correctedResult = result;
+
+  // If scores are equal and neither exceeded 21, it should be a push
+  if (playerScore === dealerScore && playerScore <= 21 && dealerScore <= 21) {
+    if (result !== "push") {
+      console.error(
+        "RESULT CORRECTION: Equal scores should be a push! Fixing display.",
+        {
+          original: result,
+          playerScore,
+          dealerScore,
+        }
+      );
+      correctedResult = "push";
+    }
+  }
+
   // Add a ref to track if we've already logged the result
   const hasLoggedResult = useRef(false);
 
   // Calculate payout based on result
   const calculatePayout = () => {
-    switch (result) {
+    switch (correctedResult) {
       case "blackjack":
         return currentBet * 2.5; // 3:2 payout for blackjack
       case "win":
@@ -51,16 +69,16 @@ const GameResult: React.FC<GameResultProps> = ({
     // Only log if we haven't already
     if (!hasLoggedResult.current) {
       console.log("GameResult received:", {
-        result,
-        validType: result in resultData,
+        result: correctedResult,
+        validType: correctedResult in resultData,
       });
       hasLoggedResult.current = true;
 
       // Trigger confetti effect for wins and blackjacks
-      if (result === "win" || result === "blackjack") {
-        const duration = result === "blackjack" ? 3000 : 2000;
+      if (correctedResult === "win" || correctedResult === "blackjack") {
+        const duration = correctedResult === "blackjack" ? 3000 : 2000;
         const colors =
-          result === "blackjack"
+          correctedResult === "blackjack"
             ? ["#FFD700", "#FFA500"]
             : ["#00FF00", "#32CD32"];
 
@@ -72,7 +90,7 @@ const GameResult: React.FC<GameResultProps> = ({
         });
 
         // For blackjack, add a second burst of confetti
-        if (result === "blackjack") {
+        if (correctedResult === "blackjack") {
           setTimeout(() => {
             confetti({
               particleCount: 150,
@@ -84,7 +102,7 @@ const GameResult: React.FC<GameResultProps> = ({
         }
       }
     }
-  }, [result]); // Now we can safely include result in dependencies
+  }, [correctedResult]); // Now we can safely include correctedResult in dependencies
 
   const resultData = {
     win: {
@@ -147,7 +165,7 @@ const GameResult: React.FC<GameResultProps> = ({
   };
 
   // Use the result data if it exists, otherwise use default
-  const currentResult = resultData[result] || resultData.default;
+  const currentResult = resultData[correctedResult] || resultData.default;
 
   return (
     <AnimatePresence>
@@ -196,11 +214,11 @@ const GameResult: React.FC<GameResultProps> = ({
             className="text-6xl mb-2"
             animate={{
               scale: [1, 1.2, 1],
-              rotate: result === "blackjack" ? [0, 5, -5, 0] : 0,
+              rotate: correctedResult === "blackjack" ? [0, 5, -5, 0] : 0,
             }}
             transition={{
               duration: 0.6,
-              repeat: result === "blackjack" ? Infinity : 0,
+              repeat: correctedResult === "blackjack" ? Infinity : 0,
               repeatType: "loop",
             }}
           >
@@ -239,9 +257,9 @@ const GameResult: React.FC<GameResultProps> = ({
           </div>
 
           {/* Payout display */}
-          {(result === "win" ||
-            result === "blackjack" ||
-            result === "push") && (
+          {(correctedResult === "win" ||
+            correctedResult === "blackjack" ||
+            correctedResult === "push") && (
             <motion.div
               className="bg-gradient-to-r from-yellow-900/30 to-amber-900/30 border border-yellow-700/50 rounded-lg p-4 mb-6 text-center"
               initial={{ opacity: 0, y: 10 }}
@@ -249,12 +267,12 @@ const GameResult: React.FC<GameResultProps> = ({
               transition={{ delay: 0.3 }}
             >
               <div className="text-yellow-200/80 text-sm">
-                {result === "push" ? "Returned" : "Payout"}
+                {correctedResult === "push" ? "Returned" : "Payout"}
               </div>
               <div className="text-2xl font-bold text-yellow-400">
                 ${payout.toFixed(2)}
               </div>
-              {result === "blackjack" && (
+              {correctedResult === "blackjack" && (
                 <div className="text-yellow-200/70 text-xs mt-1">
                   Blackjack pays 3:2
                 </div>
