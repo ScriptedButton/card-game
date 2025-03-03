@@ -1,153 +1,276 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 
-type ResultType = "win" | "lose" | "push" | "blackjack" | null;
+export type ResultType =
+  | "win"
+  | "lose"
+  | "push"
+  | "blackjack"
+  | "dealerWin"
+  | "bust";
 
 interface GameResultProps {
   result: ResultType;
-  payout?: number;
+  playerScore: number;
+  dealerScore: number;
+  hasBlackjack: boolean;
+  currentBet: number;
 }
 
-const GameResult: React.FC<GameResultProps> = ({ result, payout = 0 }) => {
-  // Add debug logging
-  useEffect(() => {
-    console.log("GameResult rendered with:", { result, payout });
+const GameResult: React.FC<GameResultProps> = ({
+  result,
+  playerScore,
+  dealerScore,
+  hasBlackjack,
+  currentBet,
+}) => {
+  // Add a ref to track if we've already logged the result
+  const hasLoggedResult = useRef(false);
 
-    // Safety check - can't access scores directly here, rely on the fix in the parent component
-    if (result === "win") {
-      console.log(
-        "Win result displayed - check console.logs to verify this is correct"
-      );
+  // Calculate payout based on result
+  const calculatePayout = () => {
+    switch (result) {
+      case "blackjack":
+        return currentBet * 2.5; // 3:2 payout for blackjack
+      case "win":
+        return currentBet * 2; // 1:1 payout for regular win
+      case "push":
+        return currentBet; // return original bet for push
+      default:
+        return 0; // lose, get nothing
     }
-  }, [result, payout]);
+  };
+
+  const payout = calculatePayout();
 
   useEffect(() => {
-    // Launch confetti for win or blackjack
-    if (result === "win" || result === "blackjack") {
-      const duration = result === "blackjack" ? 3000 : 1500;
-      const particleCount = result === "blackjack" ? 150 : 80;
-
-      confetti({
-        particleCount,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ["#FFD700", "#FFA500", "#FF4500"],
-        gravity: 0.8,
-        scalar: 1.2,
-        shapes: ["circle", "square"],
-        ticks: 200,
+    // Only log if we haven't already
+    if (!hasLoggedResult.current) {
+      console.log("GameResult received:", {
+        result,
+        validType: result in resultData,
       });
+      hasLoggedResult.current = true;
 
-      if (result === "blackjack") {
-        // For blackjack, add a second confetti burst after a delay
-        setTimeout(() => {
-          confetti({
-            particleCount: 100,
-            angle: 60,
-            spread: 80,
-            origin: { x: 0, y: 0.6 },
-            colors: ["#FFD700", "#FFA500", "#FF4500"],
-          });
+      // Trigger confetti effect for wins and blackjacks
+      if (result === "win" || result === "blackjack") {
+        const duration = result === "blackjack" ? 3000 : 2000;
+        const colors =
+          result === "blackjack"
+            ? ["#FFD700", "#FFA500"]
+            : ["#00FF00", "#32CD32"];
 
-          confetti({
-            particleCount: 100,
-            angle: 120,
-            spread: 80,
-            origin: { x: 1, y: 0.6 },
-            colors: ["#FFD700", "#FFA500", "#FF4500"],
-          });
-        }, 300);
+        confetti({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: colors,
+        });
+
+        // For blackjack, add a second burst of confetti
+        if (result === "blackjack") {
+          setTimeout(() => {
+            confetti({
+              particleCount: 150,
+              spread: 100,
+              origin: { y: 0.6 },
+              colors: colors,
+            });
+          }, 500);
+        }
       }
     }
-  }, [result]);
+  }, [result]); // Now we can safely include result in dependencies
 
-  if (!result) return null;
-
-  const resultText = {
-    win: "You Win!",
-    lose: "Dealer Wins",
-    push: "Push",
-    blackjack: "Blackjack!",
-  };
-
-  const resultClasses = {
-    win: "text-green-400",
-    lose: "text-red-500",
-    push: "text-yellow-300",
-    blackjack: "text-yellow-400",
-  };
-
-  const variants = {
-    hidden: { opacity: 0, scale: 0.8, y: 20 },
-    visible: {
-      opacity: 1,
-      scale: 1,
-      y: 0,
-      transition: {
-        type: "spring",
-        stiffness: 300,
-        damping: 15,
-      },
+  const resultData = {
+    win: {
+      title: "You Win!",
+      message: `You beat the dealer with a score of ${playerScore}!`,
+      color: "from-green-500 to-green-700",
+      textColor: "text-green-400",
+      borderColor: "border-green-600",
+      icon: "🏆",
     },
-    exit: {
-      opacity: 0,
-      scale: 0.8,
-      y: -20,
-      transition: { duration: 0.3 },
+    blackjack: {
+      title: "Blackjack!",
+      message: "Perfect hand! You got a Blackjack!",
+      color: "from-yellow-400 to-yellow-600",
+      textColor: "text-yellow-300",
+      borderColor: "border-yellow-500",
+      icon: "🃏",
+    },
+    push: {
+      title: "Push",
+      message: "It's a tie. Your bet has been returned.",
+      color: "from-blue-600 to-blue-800",
+      textColor: "text-blue-400",
+      borderColor: "border-blue-600",
+      icon: "🤝",
+    },
+    lose: {
+      title: "You Lose",
+      message: `The dealer won with a score of ${dealerScore}.`,
+      color: "from-red-600 to-red-800",
+      textColor: "text-red-400",
+      borderColor: "border-red-600",
+      icon: "💸",
+    },
+    dealerWin: {
+      title: "Dealer Wins",
+      message: `The dealer won with a score of ${dealerScore}.`,
+      color: "from-red-600 to-red-800",
+      textColor: "text-red-400",
+      borderColor: "border-red-600",
+      icon: "💸",
+    },
+    bust: {
+      title: "Bust!",
+      message: `You went over 21 with a score of ${playerScore}.`,
+      color: "from-red-600 to-red-800",
+      textColor: "text-red-400",
+      borderColor: "border-red-600",
+      icon: "💥",
+    },
+    // Default fallback for unexpected result types
+    default: {
+      title: "Game Over",
+      message: "The game has ended.",
+      color: "from-gray-600 to-gray-800",
+      textColor: "text-gray-400",
+      borderColor: "border-gray-600",
+      icon: "🎮",
     },
   };
 
-  // Additional animation for the payout amount
-  const payoutVariants = {
-    hidden: { opacity: 0, y: -10 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        delay: 0.3,
-        duration: 0.5,
-      },
-    },
-    exit: { opacity: 0, y: 10 },
-  };
+  // Use the result data if it exists, otherwise use default
+  const currentResult = resultData[result] || resultData.default;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-50">
-        <motion.div
-          className={`text-center p-6 pointer-events-auto`}
-          variants={variants}
-          initial="hidden"
-          animate="visible"
-          exit="exit"
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.8, y: 20 }}
+        transition={{
+          type: "spring",
+          stiffness: 350,
+          damping: 25,
+          duration: 0.4,
+        }}
+        className={`w-[340px] max-w-md mx-auto backdrop-blur-lg bg-black/40 rounded-2xl overflow-hidden shadow-2xl border-2 ${currentResult.borderColor}`}
+      >
+        <div
+          className={`bg-gradient-to-r ${currentResult.color} text-white p-4 text-center relative overflow-hidden`}
         >
-          <h2
-            className={`text-5xl font-bold mb-3 ${resultClasses[result]} animate-pulse`}
-          >
-            {resultText[result]}
-          </h2>
+          {/* Animated background design */}
+          <div className="absolute inset-0 opacity-20">
+            <div
+              className="absolute top-0 left-0 w-full h-full"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 25% 25%, rgba(255,255,255,0.2) 1%, transparent 7%), radial-gradient(circle at 75% 75%, rgba(255,255,255,0.2) 1%, transparent 7%)",
+                backgroundSize: "50px 50px",
+              }}
+            />
+          </div>
 
-          {(result === "win" || result === "blackjack") && payout > 0 && (
+          {/* Light streak animation */}
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
+            animate={{
+              opacity: [0, 0.5, 0],
+              left: ["-100%", "100%", "100%"],
+            }}
+            transition={{
+              duration: 2.5,
+              repeat: Infinity,
+              repeatDelay: 1,
+            }}
+          />
+
+          <motion.div
+            className="text-6xl mb-2"
+            animate={{
+              scale: [1, 1.2, 1],
+              rotate: result === "blackjack" ? [0, 5, -5, 0] : 0,
+            }}
+            transition={{
+              duration: 0.6,
+              repeat: result === "blackjack" ? Infinity : 0,
+              repeatType: "loop",
+            }}
+          >
+            {currentResult.icon}
+          </motion.div>
+          <h2 className="text-2xl font-bold mb-1">{currentResult.title}</h2>
+        </div>
+
+        <div className="p-6">
+          <p className={`${currentResult.textColor} text-lg text-center mb-6`}>
+            {currentResult.message}
+          </p>
+
+          {/* Score comparison */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-black/20 p-3 rounded-lg text-center">
+              <div className="text-white/60 text-sm">Your Score</div>
+              <div
+                className={`text-xl font-bold ${
+                  playerScore > 21 ? "text-red-500" : "text-white"
+                }`}
+              >
+                {playerScore} {hasBlackjack && "♠♥"}
+              </div>
+            </div>
+            <div className="bg-black/20 p-3 rounded-lg text-center">
+              <div className="text-white/60 text-sm">Dealer Score</div>
+              <div
+                className={`text-xl font-bold ${
+                  dealerScore > 21 ? "text-red-500" : "text-white"
+                }`}
+              >
+                {dealerScore}
+              </div>
+            </div>
+          </div>
+
+          {/* Payout display */}
+          {(result === "win" ||
+            result === "blackjack" ||
+            result === "push") && (
             <motion.div
-              className="text-2xl font-semibold text-yellow-300"
-              variants={payoutVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
+              className="bg-gradient-to-r from-yellow-900/30 to-amber-900/30 border border-yellow-700/50 rounded-lg p-4 mb-6 text-center"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
             >
-              +${payout.toFixed(2)}
+              <div className="text-yellow-200/80 text-sm">
+                {result === "push" ? "Returned" : "Payout"}
+              </div>
+              <div className="text-2xl font-bold text-yellow-400">
+                ${payout.toFixed(2)}
+              </div>
+              {result === "blackjack" && (
+                <div className="text-yellow-200/70 text-xs mt-1">
+                  Blackjack pays 3:2
+                </div>
+              )}
             </motion.div>
           )}
+        </div>
 
-          {/* Add debug info */}
-          <div className="mt-2 text-xs text-gray-400">
-            Debug: Result type "{result}"
-          </div>
-        </motion.div>
-      </div>
+        {/* Decorative card symbols at the bottom */}
+        <div className="flex justify-center gap-4 mb-4 text-white/30 text-xl">
+          <span>♠</span>
+          <span>♥</span>
+          <span>♦</span>
+          <span>♣</span>
+        </div>
+      </motion.div>
     </AnimatePresence>
   );
 };

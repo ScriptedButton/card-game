@@ -7,7 +7,6 @@ import {
   getSuitColor,
   getCardDisplay,
 } from "@/lib/utils/cardUtils";
-import { motion } from "framer-motion";
 
 export interface PlayingCardProps {
   card?: Card;
@@ -28,6 +27,15 @@ export default function PlayingCard({
 }: PlayingCardProps) {
   const [isInitialMount, setIsInitialMount] = useState(true);
   const [isCardFlipped, setIsCardFlipped] = useState(isFlipped);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [cardBounds, setCardBounds] = useState({
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+  });
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const hasAnimated = React.useRef(false);
 
   useEffect(() => {
     if (isInitialMount) {
@@ -37,136 +45,188 @@ export default function PlayingCard({
     setIsCardFlipped(!faceUp);
   }, [faceUp, isInitialMount]);
 
-  // Animation variants
-  const cardVariants = {
-    initial: {
-      opacity: 0,
-      y: 50,
-      scale: 0.8,
-    },
-    animate: {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      transition: {
-        type: "spring",
-        stiffness: 300,
-        damping: 20,
-        delay: animationDelay,
-      },
-    },
-    exit: {
-      opacity: isWinningHand ? 1 : 0,
-      y: isWinningHand ? 0 : -20,
-      transition: {
-        duration: 0.3,
-        delay: 0.5,
-      },
-    },
-    hover: {
-      scale: 1.05,
-      boxShadow:
-        "0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1)",
-      transition: { duration: 0.2 },
-    },
-    new: {
-      scale: [1, 1.1, 1],
-      opacity: [1, 1, 1],
-      boxShadow: [
-        "0 0 0 rgba(255, 215, 0, 0)",
-        "0 0 15px rgba(255, 215, 0, 0.7)",
-        "0 0 0 rgba(255, 215, 0, 0)",
-      ],
-      transition: {
-        duration: 1.2,
-        times: [0, 0.5, 1],
-        delay: 0.2 + animationDelay,
-      },
-    },
-    winning: {
-      boxShadow: [
-        "0 0 0 rgba(0, 255, 0, 0)",
-        "0 0 15px rgba(0, 255, 0, 0.7)",
-        "0 0 0 rgba(0, 255, 0, 0)",
-      ],
-      scale: [1, 1.05, 1],
-      transition: {
-        duration: 1.5,
-        repeat: 1,
-        repeatType: "loop" as const,
-      },
-    },
+  // Reset animation state when a new card is added
+  useEffect(() => {
+    // Reset the animation state when the card changes
+    hasAnimated.current = false;
+
+    // Set a timeout to mark the card as animated after the animation completes
+    if (isNew) {
+      const timeout = setTimeout(() => {
+        hasAnimated.current = true;
+      }, 800); // Match the animation duration
+
+      return () => clearTimeout(timeout);
+    }
+  }, [isNew, card]); // Add card as a dependency to reset animation when card changes
+
+  useEffect(() => {
+    // Update card boundaries when mounted
+    if (cardRef.current) {
+      const rect = cardRef.current.getBoundingClientRect();
+      setCardBounds({
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+    }
+  }, []);
+
+  // Handle mouse move for 3D tilt effect
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+
+    const rect = cardRef.current.getBoundingClientRect();
+    setCardBounds({
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+    });
+
+    setMousePosition({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
   };
 
-  // Only try to access card properties if card is defined
-  const suitSymbol = card && card.suit ? getSuitSymbol(card.suit) : "";
-  const suitColorClass = card && card.suit ? getSuitColor(card.suit) : "";
-  const rankDisplay = card && card.rank ? getCardDisplay(card.rank) : "";
+  // Calculate the 3D tilt values based on mouse position
+  const calculateTilt = () => {
+    if (cardBounds.width === 0 || isCardFlipped) return { x: 0, y: 0 };
+
+    // Calculate the tilt based on mouse position relative to card center
+    const centerX = cardBounds.width / 2;
+    const centerY = cardBounds.height / 2;
+
+    // Calculate tilt (max 15 degrees)
+    const tiltX = ((mousePosition.y - centerY) / centerY) * 10;
+    const tiltY = ((centerX - mousePosition.x) / centerX) * 10;
+
+    return { x: tiltX, y: tiltY };
+  };
+
+  // Calculate the shine position
+  const calculateShine = () => {
+    if (cardBounds.width === 0 || isCardFlipped)
+      return { opacity: 0, x: "50%", y: "50%" };
+
+    const x = (mousePosition.x / cardBounds.width) * 100;
+    const y = (mousePosition.y / cardBounds.height) * 100;
+
+    return {
+      opacity: 0.15,
+      x: `${x}%`,
+      y: `${y}%`,
+    };
+  };
+
+  const tilt = calculateTilt();
+  const shine = calculateShine();
+
+  const cardWrapperStyle: React.CSSProperties = {
+    opacity: isNew && !hasAnimated.current ? 0 : 1,
+    transform: `scale(${isNew && !hasAnimated.current ? 0.8 : 1}) translateY(${
+      isNew && !hasAnimated.current ? "50px" : "0"
+    })`,
+    transition: `opacity 0.8s ease, transform 0.8s ease`,
+  };
+
+  if (animationDelay > 0) {
+    cardWrapperStyle.transitionDelay = `${animationDelay}s`;
+  }
 
   return (
-    <motion.div
-      className={`perspective-1000 w-[220px] h-[320px] cursor-pointer ${
-        isNew ? "deal-animation" : ""
-      }`}
-      initial="initial"
-      animate={
-        isWinningHand
-          ? ["animate", "winning"]
-          : isNew
-          ? ["animate", "new"]
-          : "animate"
-      }
-      exit="exit"
-      whileHover="hover"
-      variants={cardVariants}
-    >
+    <div className="perspective-1000" style={cardWrapperStyle}>
       <div
-        className={`relative w-full h-full transition-transform duration-500 transform-style-3d ${
-          isCardFlipped ? "rotate-y-180" : ""
-        }`}
+        ref={cardRef}
+        className={`relative transform-style-3d w-[120px] h-[170px] ${
+          isNew && !hasAnimated.current ? "deal-animation" : ""
+        } ${isWinningHand ? "animate-pulse" : ""}`}
+        style={{ transformStyle: "preserve-3d" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setMousePosition({ x: 0, y: 0 })}
       >
-        {/* Card Front */}
         <div
-          className={`absolute w-full h-full backface-hidden bg-white border-2 border-gray-200 shadow-lg ${
-            isCardFlipped ? "rotate-y-180 pointer-events-none" : ""
-          } flex flex-col justify-between p-4 rounded-xl playing-card-front`}
+          className="playing-card-front absolute w-full h-full backface-hidden"
+          style={{
+            backfaceVisibility: "hidden",
+            transform: isCardFlipped
+              ? "rotateY(180deg)"
+              : `rotateY(0deg) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+          }}
         >
           {card && (
             <>
-              <div
-                className={`text-xl font-bold ${suitColorClass} flex items-center top-content`}
-              >
-                {rankDisplay}
-                <span className="ml-1">{suitSymbol}</span>
+              {/* Card Top Left */}
+              <div className="absolute top-3 left-3 flex flex-col items-center">
+                <div className={`font-bold ${getSuitColor(card.suit)}`}>
+                  {getCardDisplay(card.rank)}
+                </div>
+                <div
+                  className={`text-lg card-symbol ${getSuitColor(card.suit)}`}
+                >
+                  {getSuitSymbol(card.suit)}
+                </div>
               </div>
-              <div
-                className={`text-center text-7xl ${suitColorClass} flex-grow flex items-center justify-center card-symbol`}
-              >
-                {suitSymbol}
+
+              {/* Card Bottom Right */}
+              <div className="absolute bottom-3 right-3 flex flex-col items-center rotate-180">
+                <div className={`font-bold ${getSuitColor(card.suit)}`}>
+                  {getCardDisplay(card.rank)}
+                </div>
+                <div
+                  className={`text-lg card-symbol ${getSuitColor(card.suit)}`}
+                >
+                  {getSuitSymbol(card.suit)}
+                </div>
               </div>
-              <div
-                className={`text-xl font-bold self-end rotate-180 ${suitColorClass} flex items-center bottom-content`}
-              >
-                {rankDisplay}
-                <span className="ml-1">{suitSymbol}</span>
+
+              {/* Card Center Symbol */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className={`text-6xl card-symbol ${getSuitColor(card.suit)}`}
+                >
+                  {getSuitSymbol(card.suit)}
+                </div>
               </div>
+
+              {/* Background Pattern */}
+              <div className="pattern-background"></div>
+
+              {/* Dynamic Shine Effect */}
+              <div
+                className="absolute inset-0 rounded-xl pointer-events-none"
+                style={{
+                  background:
+                    "radial-gradient(circle at center, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 60%)",
+                  left: shine.x,
+                  top: shine.y,
+                  transform: "translate(-50%, -50%)",
+                  width: "150%",
+                  height: "150%",
+                  opacity: shine.opacity,
+                  mixBlendMode: "soft-light",
+                  transition:
+                    "opacity 0.1s ease, left 0.1s ease, top 0.1s ease",
+                }}
+              />
             </>
           )}
         </div>
 
-        {/* Card Back */}
         <div
-          className={`absolute w-full h-full backface-hidden bg-green-800 border-2 border-gray-200 shadow-lg rotate-y-180 ${
-            isCardFlipped ? "" : "pointer-events-none"
-          } flex flex-col justify-center items-center p-4 rounded-xl playing-card-back`}
+          className="playing-card-back absolute w-full h-full backface-hidden"
+          style={{
+            backfaceVisibility: "hidden",
+            transform: isCardFlipped ? "rotateY(0deg)" : "rotateY(180deg)",
+          }}
         >
-          <div className="h-full w-full flex items-center justify-center">
-            <div className="w-4/5 h-4/5 border-4 border-double border-yellow-300 rounded-lg flex items-center justify-center pattern-background">
-              <div className="text-yellow-300 text-2xl font-bold">21</div>
-            </div>
+          <div className="flex items-center justify-center h-full text-white text-opacity-30 font-bold text-lg">
+            <div className="transform-style-3d rotate-y-180">B♠J</div>
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

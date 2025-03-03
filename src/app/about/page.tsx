@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,13 +11,15 @@ export default function AboutPage() {
       <div className="w-full max-w-4xl">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
-          <Link href="/">
-            <Button
-              variant="outline"
-              className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10"
-            >
-              Back to Home
-            </Button>
+          <Link href="/" passHref legacyBehavior>
+            <a className="relative z-50">
+              <Button
+                variant="outline"
+                className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10"
+              >
+                Back to Home
+              </Button>
+            </a>
           </Link>
           <h1 className="text-4xl font-bold text-white text-center">
             About The Game
@@ -110,10 +114,12 @@ export default function AboutPage() {
           </div>
 
           <div className="flex justify-center">
-            <Link href="/game">
-              <Button className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-8 py-4">
-                Play Now
-              </Button>
+            <Link href="/game" passHref legacyBehavior>
+              <a className="relative z-50">
+                <Button className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-8 py-4">
+                  Play Now
+                </Button>
+              </a>
             </Link>
           </div>
         </Card>
