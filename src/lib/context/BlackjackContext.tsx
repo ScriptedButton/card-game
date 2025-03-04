@@ -5,15 +5,10 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from "react";
-import {
-  Card,
-  DeckResponse,
-  getShuffledDeck,
-  getAllCards,
-  getCardAt,
-} from "@/lib/services/cardApi";
+import { Card, getShuffledDeck, getAllCards } from "@/lib/services/cardApi";
 import {
   calculateHandValue,
   determineWinner,
@@ -89,7 +84,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState<number>(0);
+  const [, setRetryCount] = useState<number>(0);
   const [hasBlackjack, setHasBlackjack] = useState<boolean>(false);
 
   // API state
@@ -201,140 +196,159 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   };
 
   // Start a new game with a new deck
-  const startNewGame = async (bet: number = 10) => {
-    if (bet > balance) {
-      setError("Insufficient funds for this bet");
-      return;
-    }
-
-    console.log("Starting new game with bet:", bet);
-    setIsLoading(true);
-    setLoadingStage("shuffling");
-    setError(null);
-    setResult(null);
-    setGameStatus("dealing");
-    setCurrentBet(bet);
-    setRetryCount(0);
-
-    // Deduct the bet amount from the player's balance when the game starts
-    // This bet will be:
-    // - Lost if the dealer wins
-    // - Returned if there's a push (tie)
-    // - Returned plus winnings if the player wins
-    setBalance((prev) => Math.max(0, prev - bet));
-    console.log(`Bet of $${bet} deducted from balance`);
-
-    try {
-      // Always get a fresh deck for each new game
-      const response = await getShuffledDeck(1);
-
-      if (!response || !response.id) {
-        throw new Error("Invalid API response: missing ID");
+  const startNewGame = useCallback(
+    async (bet: number = 10) => {
+      if (bet > balance) {
+        setError("Insufficient funds for this bet");
+        return;
       }
 
-      if (
-        !response.deck ||
-        !response.deck.cards ||
-        !Array.isArray(response.deck.cards)
-      ) {
-        throw new Error("Invalid API response: missing cards data");
-      }
+      console.log("Starting new game with bet:", bet);
+      setIsLoading(true);
+      setLoadingStage("shuffling");
+      setError(null);
+      setResult(null);
+      setGameStatus("dealing");
+      setCurrentBet(bet);
+      setRetryCount(0);
 
-      const cardArray = response.deck.cards;
-      if (cardArray.length < 4) {
-        throw new Error("Not enough cards in the deck");
-      }
+      // Deduct the bet amount from the player's balance when the game starts
+      // This bet will be:
+      // - Lost if the dealer wins
+      // - Returned if there's a push (tie)
+      // - Returned plus winnings if the player wins
+      setBalance((prev) => Math.max(0, prev - bet));
+      console.log(`Bet of $${bet} deducted from balance`);
 
-      console.log("Received new deck with", cardArray.length, "cards");
-      console.log("Setting deck ID:", response.id);
+      try {
+        // Always get a fresh deck for each new game
+        const response = await getShuffledDeck(1);
 
-      // Set the deck info BEFORE trying to get cards
-      setResultId(response.id);
-      setAvailableCards(cardArray);
-      setDrawnCardIndex(0);
-
-      // Now that we have the new cards ready, clear the previous hands
-      setPlayerCards([]);
-      setDealerCards([]);
-
-      // Wait a small amount to ensure the UI has updated
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // Deal initial cards from the local card array instead of calling getNextCard
-      // This avoids any potential recursive state updates
-      const playerCard1 = cardArray[0];
-      const dealerCard1 = cardArray[1];
-      const playerCard2 = cardArray[2];
-      const dealerCard2 = cardArray[3];
-
-      // Update our drawn card index to reflect that we've used 4 cards
-      setDrawnCardIndex(4);
-
-      // Add delay between dealing cards for visual effect
-      setPlayerCards([playerCard1]);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      setDealerCards([dealerCard1]);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      setPlayerCards([playerCard1, playerCard2]);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      setDealerCards([dealerCard1, dealerCard2]);
-
-      // Check for blackjack
-      const playerHand = [playerCard1, playerCard2];
-      const dealerHand = [dealerCard1, dealerCard2];
-
-      const playerHasBlackjack = isBlackjack(playerHand);
-      setHasBlackjack(playerHasBlackjack);
-
-      // If player has blackjack, end game immediately
-      if (playerHasBlackjack) {
-        console.log("Player has blackjack!");
-
-        // If dealer also has blackjack, it's a push
-        if (isBlackjack(dealerHand)) {
-          console.log("Dealer also has blackjack - Push");
-          setResult("push");
-          setGameStatus("complete");
-
-          // Return the original bet to the player (bet was already deducted at game start)
-          console.log(`Push with blackjack - returning bet of ${bet}`);
-          setBalance((prev) => {
-            const newBalance = prev + bet;
-            console.log(
-              `Balance updated for push with blackjack: ${prev} + ${bet} = ${newBalance}`
-            );
-            return newBalance;
-          });
-        } else {
-          // Player wins with blackjack
-          console.log("Player wins with blackjack!");
-          setResult("player");
-          setGameStatus("complete");
-
-          // Update balance - blackjack pays 3:2
-          const payoutAmount = calculatePayout(bet, true);
-          setBalance((prev) => prev + payoutAmount);
+        if (!response || !response.id) {
+          throw new Error("Invalid API response: missing ID");
         }
-      } else {
-        // Game continues
-        setGameStatus("playerTurn");
+
+        if (
+          !response.deck ||
+          !response.deck.cards ||
+          !Array.isArray(response.deck.cards)
+        ) {
+          throw new Error("Invalid API response: missing cards data");
+        }
+
+        const cardArray = response.deck.cards;
+        if (cardArray.length < 4) {
+          throw new Error("Not enough cards in the deck");
+        }
+
+        console.log("Received new deck with", cardArray.length, "cards");
+        console.log("Setting deck ID:", response.id);
+
+        // Set the deck info BEFORE trying to get cards
+        setResultId(response.id);
+        setAvailableCards(cardArray);
+        setDrawnCardIndex(0);
+
+        // Now that we have the new cards ready, clear the previous hands
+        setPlayerCards([]);
+        setDealerCards([]);
+
+        // Wait a small amount to ensure the UI has updated
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Deal initial cards from the local card array instead of calling getNextCard
+        // This avoids any potential recursive state updates
+        const playerCard1 = cardArray[0];
+        const dealerCard1 = cardArray[1];
+        const playerCard2 = cardArray[2];
+        const dealerCard2 = cardArray[3];
+
+        // Update our drawn card index to reflect that we've used 4 cards
+        setDrawnCardIndex(4);
+
+        // Add delay between dealing cards for visual effect
+        setPlayerCards([playerCard1]);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        setDealerCards([dealerCard1]);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        setPlayerCards([playerCard1, playerCard2]);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        setDealerCards([dealerCard1, dealerCard2]);
+
+        // Check for blackjack
+        const playerHand = [playerCard1, playerCard2];
+        const dealerHand = [dealerCard1, dealerCard2];
+
+        const playerHasBlackjack = isBlackjack(playerHand);
+        setHasBlackjack(playerHasBlackjack);
+
+        // If player has blackjack, end game immediately
+        if (playerHasBlackjack) {
+          console.log("Player has blackjack!");
+
+          // If dealer also has blackjack, it's a push
+          if (isBlackjack(dealerHand)) {
+            console.log("Dealer also has blackjack - Push");
+            setResult("push");
+            setGameStatus("complete");
+
+            // Return the original bet to the player (bet was already deducted at game start)
+            console.log(`Push with blackjack - returning bet of ${bet}`);
+            setBalance((prev) => {
+              const newBalance = prev + bet;
+              console.log(
+                `Balance updated for push with blackjack: ${prev} + ${bet} = ${newBalance}`
+              );
+              return newBalance;
+            });
+          } else {
+            // Player wins with blackjack
+            console.log("Player wins with blackjack!");
+            setResult("player");
+            setGameStatus("complete");
+
+            // Update balance - blackjack pays 3:2
+            const payoutAmount = calculatePayout(bet, true);
+            setBalance((prev) => prev + payoutAmount);
+          }
+        } else {
+          // Game continues
+          setGameStatus("playerTurn");
+        }
+      } catch (error) {
+        console.error("Error starting new game:", error);
+        setError(
+          `Failed to start game: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+        setGameStatus("idle"); // Reset game status if error occurs
+      } finally {
+        setIsLoading(false);
+        setLoadingStage("idle");
       }
-    } catch (error) {
-      console.error("Error starting new game:", error);
-      setError(
-        `Failed to start game: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-      setGameStatus("idle"); // Reset game status if error occurs
-    } finally {
-      setIsLoading(false);
-      setLoadingStage("idle");
-    }
-  };
+    },
+    [
+      balance,
+      setError,
+      setIsLoading,
+      setLoadingStage,
+      setResult,
+      setGameStatus,
+      setCurrentBet,
+      setRetryCount,
+      setResultId,
+      setAvailableCards,
+      setDrawnCardIndex,
+      setPlayerCards,
+      setDealerCards,
+      setHasBlackjack,
+      setBalance,
+    ]
+  );
 
   // Player hits (takes another card)
   const hit = async () => {
@@ -361,9 +375,13 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
         console.log("Player busts!");
         await handleGameEnd(updatedPlayerCards);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error hitting:", err);
-      setError(`Failed to draw card: ${err.message || "Unknown error"}`);
+      setError(
+        `Failed to draw card: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+      );
     } finally {
       setIsLoading(false);
       setLoadingStage("idle");
@@ -478,9 +496,13 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
             setGameStatus("complete");
           });
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error doubling down:", err);
-      setError(`Failed to double down: ${err.message || "Unknown error"}`);
+      setError(
+        `Failed to double down: ${
+          err instanceof Error ? err.message : "Unknown error"
+        }`
+      );
       setIsLoading(false);
       setLoadingStage("idle");
     }
@@ -761,13 +783,10 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
   // Initialize game on first load
   useEffect(() => {
-    if (typeof window !== "undefined" && gameStatus === "idle" && !isLoading) {
-      console.log("Auto-starting initial game");
-      startNewGame(10).catch((err) => {
-        console.error("Failed to auto-start game:", err);
-      });
+    if (gameStatus === "idle" && !isLoading) {
+      startNewGame();
     }
-  }, []);
+  }, [gameStatus, isLoading, startNewGame]);
 
   const value = {
     gameStatus,

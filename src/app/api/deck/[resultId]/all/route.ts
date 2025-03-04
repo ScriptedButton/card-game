@@ -4,10 +4,10 @@ const API_BASE_URL = "https://qrandom.io/api";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { resultId: string } }
+  { params }: { params: Promise<{ resultId: string }> }
 ) {
   try {
-    const resultId = params.resultId;
+    const { resultId } = await params;
     const apiUrl = `${API_BASE_URL}/random/deck/${resultId}/all`;
 
     console.log("Fetching from API:", apiUrl);

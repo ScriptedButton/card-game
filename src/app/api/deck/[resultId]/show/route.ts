@@ -4,10 +4,10 @@ const API_BASE_URL = "https://qrandom.io/api";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { resultId: string } }
+  { params }: { params: Promise<{ resultId: string }> }
 ) {
   try {
-    const resultId = params.resultId;
+    const { resultId } = await params;
     const searchParams = request.nextUrl.searchParams;
     const at = searchParams.get("at");
 

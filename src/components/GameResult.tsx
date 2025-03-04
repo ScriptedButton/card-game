@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 
@@ -47,6 +46,66 @@ const GameResult: React.FC<GameResultProps> = ({
 
   const payout = calculatePayout();
 
+  const resultData = useMemo(
+    () => ({
+      win: {
+        title: "You Win!",
+        message: `You won ${payout} chips!`,
+        className: "text-green-500",
+        borderColor: "border-green-600",
+        color: "from-green-500 to-green-700",
+        textColor: "text-green-400",
+        icon: "🏆",
+      },
+      lose: {
+        title: "You Lose",
+        message: "Better luck next time!",
+        className: "text-red-500",
+        borderColor: "border-red-600",
+        color: "from-red-600 to-red-800",
+        textColor: "text-red-400",
+        icon: "💸",
+      },
+      push: {
+        title: "Push",
+        message: "It's a tie! Your bet has been returned.",
+        className: "text-yellow-500",
+        borderColor: "border-yellow-500",
+        color: "from-blue-600 to-blue-800",
+        textColor: "text-blue-400",
+        icon: "🤝",
+      },
+      blackjack: {
+        title: "Blackjack!",
+        message: `Congratulations! You won ${payout} chips!`,
+        className: "text-yellow-400",
+        borderColor: "border-yellow-500",
+        color: "from-yellow-400 to-yellow-600",
+        textColor: "text-yellow-300",
+        icon: "🃏",
+      },
+      dealerWin: {
+        title: "Dealer Wins",
+        message: "The house always wins... sometimes.",
+        className: "text-red-500",
+        borderColor: "border-red-600",
+        color: "from-red-600 to-red-800",
+        textColor: "text-red-400",
+        icon: "💸",
+      },
+      bust: {
+        title: "Bust!",
+        message: "You went over 21!",
+        className: "text-red-500",
+        borderColor: "border-red-600",
+        color: "from-red-600 to-red-800",
+        textColor: "text-red-400",
+        icon: "💥",
+      },
+    }),
+    [payout]
+  );
+
   useEffect(() => {
     // Only log if we haven't already
     if (!hasLoggedResult.current) {
@@ -58,7 +117,6 @@ const GameResult: React.FC<GameResultProps> = ({
 
       // Trigger confetti effect for wins and blackjacks
       if (result === "win" || result === "blackjack") {
-        const duration = result === "blackjack" ? 3000 : 2000;
         const colors =
           result === "blackjack"
             ? ["#FFD700", "#FFA500"]
@@ -84,70 +142,10 @@ const GameResult: React.FC<GameResultProps> = ({
         }
       }
     }
-  }, [result]); // Now we can safely include result in dependencies
+  }, [result, resultData]); // Add resultData to dependencies
 
-  const resultData = {
-    win: {
-      title: "You Win!",
-      message: `You beat the dealer with a score of ${playerScore}!`,
-      color: "from-green-500 to-green-700",
-      textColor: "text-green-400",
-      borderColor: "border-green-600",
-      icon: "🏆",
-    },
-    blackjack: {
-      title: "Blackjack!",
-      message: "Perfect hand! You got a Blackjack!",
-      color: "from-yellow-400 to-yellow-600",
-      textColor: "text-yellow-300",
-      borderColor: "border-yellow-500",
-      icon: "🃏",
-    },
-    push: {
-      title: "Push",
-      message: "It's a tie. Your bet has been returned.",
-      color: "from-blue-600 to-blue-800",
-      textColor: "text-blue-400",
-      borderColor: "border-blue-600",
-      icon: "🤝",
-    },
-    lose: {
-      title: "You Lose",
-      message: `The dealer won with a score of ${dealerScore}.`,
-      color: "from-red-600 to-red-800",
-      textColor: "text-red-400",
-      borderColor: "border-red-600",
-      icon: "💸",
-    },
-    dealerWin: {
-      title: "Dealer Wins",
-      message: `The dealer won with a score of ${dealerScore}.`,
-      color: "from-red-600 to-red-800",
-      textColor: "text-red-400",
-      borderColor: "border-red-600",
-      icon: "💸",
-    },
-    bust: {
-      title: "Bust!",
-      message: `You went over 21 with a score of ${playerScore}.`,
-      color: "from-red-600 to-red-800",
-      textColor: "text-red-400",
-      borderColor: "border-red-600",
-      icon: "💥",
-    },
-    // Default fallback for unexpected result types
-    default: {
-      title: "Game Over",
-      message: "The game has ended.",
-      color: "from-gray-600 to-gray-800",
-      textColor: "text-gray-400",
-      borderColor: "border-gray-600",
-      icon: "🎮",
-    },
-  };
-
-  // Use the result data if it exists, otherwise use default
-  const currentResult = resultData[result] || resultData.default;
+  // Use the result data if it exists, otherwise use lose as fallback
+  const currentResult = resultData[result] || resultData.lose;
 
   return (
     <AnimatePresence>
