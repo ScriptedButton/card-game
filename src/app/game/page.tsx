@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useBlackjack } from "@/lib/context/BlackjackContext";
 import { Button } from "@/components/ui/button";
 import PlayingCard from "@/components/cards/PlayingCard";
@@ -9,7 +9,6 @@ import LoadingIndicator, {
 } from "@/components/LoadingIndicator";
 import { AlertCircle, RefreshCw, XCircle } from "lucide-react";
 import GameResult, { ResultType } from "@/components/GameResult";
-import { Card as PlayingCardType } from "@/lib/services/cardApi";
 import PlayerNameInput from "@/components/PlayerNameInput";
 import Leaderboard from "@/components/Leaderboard";
 

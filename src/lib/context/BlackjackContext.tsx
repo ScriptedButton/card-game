@@ -88,7 +88,6 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState<number>(0);
   const [hasBlackjack, setHasBlackjack] = useState<boolean>(false);
   const [playerName, setPlayerName] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -221,7 +220,6 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       setResult(null);
       setGameStatus("dealing");
       setCurrentBet(bet);
-      setRetryCount(0);
 
       // Deduct the bet amount from the player's balance when the game starts
       // This bet will be:
@@ -350,7 +348,6 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       setResult,
       setGameStatus,
       setCurrentBet,
-      setRetryCount,
       setResultId,
       setAvailableCards,
       setDrawnCardIndex,
