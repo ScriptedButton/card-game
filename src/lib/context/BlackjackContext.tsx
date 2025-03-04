@@ -593,11 +593,36 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
         `Dealer finished drawing with ${cardsAdded} new cards, final score: ${currentScore}`
       );
 
-      // Set the final dealer cards state
+      // Set the final dealer cards state and wait for it to update
       setDealerCards(currentDealerCards);
 
-      // Always ensure we end the game
-      console.log("Dealer play complete, ending game");
+      // Wait for state to update
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Now determine the winner with the final hands
+      const finalPlayerScore = calculateHandValue(playerCards);
+      const finalDealerScore = calculateHandValue(currentDealerCards);
+
+      console.log("Final scores before determining winner:", {
+        player: finalPlayerScore,
+        dealer: finalDealerScore,
+      });
+
+      const winResult = determineWinner(playerCards, currentDealerCards);
+      console.log("Game result determined:", winResult);
+
+      // Set the result and complete the game
+      setResult(winResult);
+      setGameStatus("complete");
+
+      // Handle payouts based on the result
+      if (winResult === "player") {
+        const payoutAmount = calculatePayout(currentBet, hasBlackjack);
+        setBalance((prev) => prev + payoutAmount);
+      } else if (winResult === "push") {
+        setBalance((prev) => prev + currentBet);
+      }
+      // No balance update needed for dealer win as bet was already deducted
     } catch (error) {
       console.error("Error in dealer play:", error);
       setError(
@@ -606,23 +631,8 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
         }`
       );
     } finally {
-      // Regardless of what happened, ensure we end the game
-      console.log("Dealer play finally block - ending game");
       setIsLoading(false);
       setLoadingStage("idle");
-
-      // Use setTimeout to ensure state updates before proceeding
-      setTimeout(() => {
-        try {
-          // Instead of determining winner directly, use handleGameEnd for consistency
-          console.log("Dealer play complete, ending game via handleGameEnd");
-          handleGameEnd();
-        } catch (finalError) {
-          console.error("Error in dealer play final handling:", finalError);
-          setError("Error finalizing game");
-          setGameStatus("complete");
-        }
-      }, 300);
     }
   };
 
