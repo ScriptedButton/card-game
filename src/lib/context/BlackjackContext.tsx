@@ -42,6 +42,8 @@ interface BlackjackContextType {
   loadingStage: LoadingStage;
   error: string | null;
   hasBlackjack: boolean;
+  playerName: string;
+  showLeaderboard: boolean;
 
   // Game actions
   startNewGame: (bet?: number) => Promise<void>;
@@ -51,6 +53,8 @@ interface BlackjackContextType {
   doubleDown: () => Promise<void>;
   dismissError: () => void;
   resetGame: () => void;
+  setPlayerName: (name: string) => void;
+  toggleLeaderboard: () => void;
 }
 
 const BlackjackContext = createContext<BlackjackContextType | undefined>(
@@ -84,8 +88,15 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [, setRetryCount] = useState<number>(0);
+  const [retryCount, setRetryCount] = useState<number>(0);
   const [hasBlackjack, setHasBlackjack] = useState<boolean>(false);
+  const [playerName, setPlayerName] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("playerName") || "";
+    }
+    return "";
+  });
+  const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
 
   // API state
   const [resultId, setResultId] = useState<string | null>(null);
@@ -791,12 +802,45 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     setError(null);
   };
 
-  // Initialize game on first load
+  // Update leaderboard when game ends
   useEffect(() => {
-    if (gameStatus === "idle" && !isLoading) {
-      startNewGame();
+    const updateLeaderboard = async () => {
+      if (gameStatus === "complete" && playerName && result !== null) {
+        try {
+          await fetch("/api/leaderboard", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              playerName,
+              score: balance,
+              highestWin: result === "player" ? currentBet : 0,
+            }),
+          });
+        } catch (error) {
+          console.error("Failed to update leaderboard:", error);
+        }
+      }
+    };
+
+    updateLeaderboard();
+  }, [gameStatus, result, balance, currentBet, playerName]);
+
+  // Save player name to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined" && playerName) {
+      localStorage.setItem("playerName", playerName);
     }
-  }, [gameStatus, isLoading, startNewGame]);
+  }, [playerName]);
+
+  const handleSetPlayerName = (name: string) => {
+    setPlayerName(name);
+  };
+
+  const toggleLeaderboard = () => {
+    setShowLeaderboard((prev) => !prev);
+  };
 
   const value = {
     gameStatus,
@@ -811,6 +855,8 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     loadingStage,
     error,
     hasBlackjack,
+    playerName,
+    showLeaderboard,
     startNewGame,
     hit,
     stand,
@@ -818,6 +864,8 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     doubleDown,
     dismissError,
     resetGame,
+    setPlayerName: handleSetPlayerName,
+    toggleLeaderboard,
   };
 
   return (
