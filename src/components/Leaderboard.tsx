@@ -3,13 +3,15 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "./ui/button";
+import { getLeaderboard } from "@/lib/actions";
 
 interface LeaderboardEntry {
   playerName: string;
-  score: number;
+  score: number; // This now represents the current balance
   gamesPlayed: number;
   highestWin: number;
   timestamp: number;
+  image?: string | null;
 }
 
 interface LeaderboardProps {
@@ -36,13 +38,19 @@ export default function Leaderboard({
   const fetchLeaderboard = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch("/api/leaderboard");
-      if (!response.ok) {
-        throw new Error("Failed to fetch leaderboard");
+      console.log("Fetching leaderboard data using server action...");
+
+      const result = await getLeaderboard();
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to fetch leaderboard");
       }
-      const data = await response.json();
-      setLeaderboard(data);
+
+      console.log(`Retrieved ${result.data.length} leaderboard entries`);
+
+      setLeaderboard(result.data);
     } catch (err) {
+      console.error("Leaderboard error:", err);
       setError(
         err instanceof Error ? err.message : "Failed to load leaderboard"
       );
@@ -78,7 +86,18 @@ export default function Leaderboard({
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
             </div>
           ) : error ? (
-            <div className="text-red-400 text-center py-8">{error}</div>
+            <div className="text-red-400 text-center py-8">
+              {error}
+              <div className="mt-4">
+                <Button
+                  onClick={fetchLeaderboard}
+                  variant="outline"
+                  className="text-white border-white/20 hover:bg-white/10"
+                >
+                  Try Again
+                </Button>
+              </div>
+            </div>
           ) : leaderboard.length === 0 ? (
             <div className="text-white/60 text-center py-8">
               No entries yet. Be the first to make it to the leaderboard!
@@ -87,7 +106,7 @@ export default function Leaderboard({
             <div className="space-y-4">
               {leaderboard.map((entry, index) => (
                 <motion.div
-                  key={entry.playerName}
+                  key={`${entry.playerName}-${index}`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
@@ -110,8 +129,11 @@ export default function Leaderboard({
                       </span>
                     </div>
                     <div className="text-sm text-white/80">
-                      Highest Balance: {entry.score} | Best Win:{" "}
-                      {entry.highestWin}
+                      <span className="text-yellow-400 font-bold">
+                        Balance: ${entry.score}
+                      </span>
+                      <span className="mx-2">|</span>
+                      <span>Best Win: ${entry.highestWin}</span>
                     </div>
                   </div>
                 </motion.div>

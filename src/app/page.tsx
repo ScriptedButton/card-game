@@ -1,76 +1,16 @@
-"use client";
-
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { AnimatedBackground } from "@/components/HomepageClientComponents";
+import ServerGoogleButton from "@/components/ServerGoogleButton";
+import ServerSignOutButton from "@/components/ServerSignOutButton";
+import GuestPlayButton from "@/components/GuestPlayButton";
+import { auth } from "@/app/auth";
 
-// Client-side only component for animations
-function AnimatedBackground() {
-  const [isClient, setIsClient] = useState(false);
+export default async function Home() {
+  const session = await auth();
+  const user = session?.user;
+  const isLoggedIn = !!user;
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isClient) return null; // Don't render on server
-
-  return (
-    <>
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-32 h-32 opacity-10 pointer-events-none"
-            style={{
-              backgroundImage:
-                i % 4 === 0
-                  ? "radial-gradient(circle, rgba(230,198,86,0.3) 0%, rgba(230,198,86,0) 70%)"
-                  : i % 4 === 1
-                  ? "radial-gradient(circle, rgba(225,225,225,0.2) 0%, rgba(225,225,225,0) 70%)"
-                  : i % 4 === 2
-                  ? "radial-gradient(circle, rgba(169,27,13,0.2) 0%, rgba(169,27,13,0) 70%)"
-                  : "radial-gradient(circle, rgba(21,128,61,0.3) 0%, rgba(21,128,61,0) 70%)",
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              transform: `rotate(${Math.random() * 180}deg) scale(${
-                0.5 + Math.random() * 1.5
-              })`,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Card symbols floating in background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {["♠", "♥", "♦", "♣"].map((symbol, i) =>
-          Array.from({ length: 3 }).map((_, j) => (
-            <div
-              key={`${symbol}-${j}`}
-              className={`absolute text-4xl ${
-                symbol === "♥" || symbol === "♦"
-                  ? "text-red-500/20"
-                  : "text-white/20"
-              } font-bold`}
-              style={{
-                left: `${i * 25 + Math.random() * 10}%`,
-                top: `${j * 30 + 10}%`,
-                transform: `rotate(${Math.random() * 180 - 90}deg)`,
-                animation: `floatDownward ${15 + Math.random() * 20}s linear ${
-                  i * 2 + j * 5
-                }s infinite`,
-              }}
-            >
-              {symbol}
-            </div>
-          ))
-        )}
-      </div>
-    </>
-  );
-}
-
-export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center game-table p-4 relative overflow-hidden">
       {/* Client-side only animations */}
@@ -78,6 +18,26 @@ export default function Home() {
 
       {/* Table edge */}
       <div className="table-edge"></div>
+
+      {/* Auth status - Positioned in top-right corner */}
+      {isLoggedIn && (
+        <div className="absolute top-4 right-4 z-50">
+          <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md p-2 sm:p-3 rounded-lg border border-white/20 shadow-xl shadow-black/30">
+            <div className="flex-1 hidden sm:block">
+              <p className="text-white/70 text-xs">Signed in as</p>
+              <p className="text-white font-semibold">
+                {user?.name || "Player"}
+              </p>
+            </div>
+            <div className="block sm:hidden">
+              <p className="text-white/90 text-xs font-medium">
+                {user?.name?.split(" ")[0] || "Player"}
+              </p>
+            </div>
+            <ServerSignOutButton />
+          </div>
+        </div>
+      )}
 
       <div className="w-full max-w-5xl flex flex-col items-center z-10 opacity-100">
         <h1 className="text-6xl md:text-7xl font-bold text-white mb-2 text-center">
@@ -158,24 +118,41 @@ export default function Home() {
           </div>
         </section>
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Link href="/game" passHref legacyBehavior>
-            <a className="relative z-50">
-              <Button className="premium-button bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold px-8 py-6 text-lg shadow-lg shadow-yellow-900/20">
-                Play Blackjack
-              </Button>
-            </a>
-          </Link>
-          <Link href="/about" passHref legacyBehavior>
-            <a className="relative z-50">
-              <Button
-                variant="outline"
-                className="premium-button border-2 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 font-bold px-8 py-6 text-lg"
-              >
-                About This Game
-              </Button>
-            </a>
-          </Link>
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-center w-full max-w-3xl mx-auto">
+          {isLoggedIn && (
+            <div className="w-full sm:w-auto">
+              <Link href="/game" passHref legacyBehavior>
+                <a className="relative z-50 block w-full">
+                  <Button className="premium-button bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-bold px-8 py-6 text-lg shadow-lg shadow-yellow-900/20 w-full">
+                    Play Blackjack
+                  </Button>
+                </a>
+              </Link>
+            </div>
+          )}
+
+          {!isLoggedIn && (
+            <>
+              <GuestPlayButton />
+              <div className="text-center my-2 sm:my-0 sm:mx-2 text-white/50">
+                or
+              </div>
+              <ServerGoogleButton />
+            </>
+          )}
+
+          <div className="w-full sm:w-auto">
+            <Link href="/about" passHref legacyBehavior>
+              <a className="relative z-50 block w-full">
+                <Button
+                  variant="outline"
+                  className="premium-button border-2 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 font-bold px-8 py-6 text-lg w-full"
+                >
+                  About This Game
+                </Button>
+              </a>
+            </Link>
+          </div>
         </div>
 
         <div className="mt-16 text-center text-white/50 text-sm">

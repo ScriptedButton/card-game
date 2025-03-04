@@ -18,6 +18,12 @@ import {
   calculatePayout,
 } from "@/lib/utils/blackjackUtils";
 
+import {
+  updateLeaderboard,
+  updateUserBalance,
+  getUserBalance,
+} from "@/lib/actions";
+
 type GameStatus = "idle" | "dealing" | "playerTurn" | "dealerTurn" | "complete";
 type GameResult = "player" | "dealer" | "push" | null;
 type LoadingStage =
@@ -72,11 +78,15 @@ export const useBlackjack = () => {
 interface BlackjackProviderProps {
   children: ReactNode;
   initialBalance?: number;
+  userId?: string;
+  isGuest?: boolean;
 }
 
 export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   children,
   initialBalance = 1000,
+  userId,
+  isGuest,
 }) => {
   // Game state
   const [gameStatus, setGameStatus] = useState<GameStatus>("idle");
@@ -96,6 +106,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     return "";
   });
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
+  const [isBalanceLoaded, setIsBalanceLoaded] = useState<boolean>(false);
 
   // API state
   const [resultId, setResultId] = useState<string | null>(null);
@@ -105,6 +116,99 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
   // Derived state
   const playerScore = calculateHandValue(playerCards || []);
   const dealerScore = calculateHandValue(dealerCards || []);
+
+  // Broadcast balance updates to ClientGamePage via custom event
+  useEffect(() => {
+    if (isBalanceLoaded) {
+      // Dispatch custom event with balance data for other components to listen for
+      const event = new CustomEvent("balanceUpdated", {
+        detail: { balance },
+      });
+      window.dispatchEvent(event);
+    }
+  }, [balance, isBalanceLoaded]);
+
+  // Initialize balance from database if user is logged in
+  useEffect(() => {
+    const loadUserBalance = async () => {
+      try {
+        console.log("Loading user balance...");
+        console.log(
+          `userId: ${userId ? userId : "undefined"}, isGuest: ${isGuest}`
+        );
+
+        if (userId && !isGuest) {
+          console.log(`Attempting to get balance for user: ${userId}`);
+          const result = await getUserBalance(userId);
+
+          if (result.success) {
+            console.log(`Balance loaded successfully: ${result.balance}`);
+            if (typeof result.balance === "number") {
+              setBalance(result.balance);
+
+              // Dispatch event for other components
+              window.dispatchEvent(
+                new CustomEvent("balanceUpdated", {
+                  detail: { balance: result.balance },
+                })
+              );
+            } else {
+              console.warn(
+                `Invalid balance value: ${result.balance}, using default balance`
+              );
+              // Set default balance
+              setBalance(initialBalance);
+            }
+          } else {
+            console.error("Failed to load user balance:", result.error);
+          }
+        } else {
+          console.log(
+            "Guest user or no userId - using default balance:",
+            initialBalance
+          );
+        }
+      } catch (error) {
+        console.error("Error loading user balance:", error);
+      } finally {
+        setIsBalanceLoaded(true);
+      }
+    };
+
+    loadUserBalance();
+  }, [userId, isGuest, initialBalance]);
+
+  // Update the database whenever the balance changes for logged-in users
+  const updateBalanceInDatabase = useCallback(
+    async (newBalance: number) => {
+      if (isGuest || !userId) return;
+
+      try {
+        console.log(
+          `Updating balance in database to ${newBalance} for user ${userId}`
+        );
+        await updateUserBalance(userId, newBalance);
+        console.log("Balance updated successfully in database");
+      } catch (error) {
+        console.error("Failed to update balance in database:", error);
+      }
+    },
+    [userId, isGuest]
+  );
+
+  // Original setBalance function needs to be modified to also update the database
+  const updateBalance = useCallback(
+    (newBalance: number) => {
+      setBalance(newBalance);
+      updateBalanceInDatabase(newBalance);
+      // Dispatch custom event with balance data
+      const event = new CustomEvent("balanceUpdated", {
+        detail: { balance: newBalance },
+      });
+      window.dispatchEvent(event);
+    },
+    [updateBalanceInDatabase]
+  );
 
   // Get a card from the deck - completely rewritten for reliability
   const getNextCard = async (retries = 2): Promise<Card> => {
@@ -226,7 +330,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       // - Lost if the dealer wins
       // - Returned if there's a push (tie)
       // - Returned plus winnings if the player wins
-      setBalance((prev) => Math.max(0, prev - bet));
+      updateBalance(balance - bet);
       console.log(`Bet of $${bet} deducted from balance`);
 
       try {
@@ -306,13 +410,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
             // Return the original bet to the player (bet was already deducted at game start)
             console.log(`Push with blackjack - returning bet of ${bet}`);
-            setBalance((prev) => {
-              const newBalance = prev + bet;
-              console.log(
-                `Balance updated for push with blackjack: ${prev} + ${bet} = ${newBalance}`
-              );
-              return newBalance;
-            });
+            updateBalance(balance + bet);
           } else {
             // Player wins with blackjack
             console.log("Player wins with blackjack!");
@@ -321,7 +419,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
             // Update balance - blackjack pays 3:2
             const payoutAmount = calculatePayout(bet, true);
-            setBalance((prev) => prev + payoutAmount);
+            updateBalance(balance + payoutAmount);
           }
         } else {
           // Game continues
@@ -354,7 +452,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       setPlayerCards,
       setDealerCards,
       setHasBlackjack,
-      setBalance,
+      updateBalance,
     ]
   );
 
@@ -462,7 +560,7 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
     setCurrentBet(currentBet * 2);
 
     // Deduct the additional bet from the balance
-    setBalance((prev) => prev - additionalBet);
+    updateBalance(balance - additionalBet);
     console.log(
       `Additional bet of $${additionalBet} deducted for double down, new balance: ${
         balance - additionalBet
@@ -626,9 +724,9 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
       // Handle payouts based on the result
       if (winResult === "player") {
         const payoutAmount = calculatePayout(currentBet, hasBlackjack);
-        setBalance((prev) => prev + payoutAmount);
+        updateBalance(balance + payoutAmount);
       } else if (winResult === "push") {
-        setBalance((prev) => prev + currentBet);
+        updateBalance(balance + currentBet);
       }
       // No balance update needed for dealer win as bet was already deducted
     } catch (error) {
@@ -738,18 +836,12 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
           : "regular win (1:1)";
         console.log(`Player won ${payoutDescription}! Payout: ${payoutAmount}`);
         // Player gets their original bet back plus winnings
-        setBalance((prev) => prev + payoutAmount);
+        updateBalance(balance + payoutAmount);
       } else if (winResult === "push") {
         console.log(`Push (tie) - bet returned. Original bet: ${currentBet}`);
         // Return the original bet to the player on push
         // (bet was already deducted at game start, so we're just giving it back)
-        setBalance((prev) => {
-          const newBalance = prev + currentBet;
-          console.log(
-            `Balance updated for push: ${prev} + ${currentBet} = ${newBalance}`
-          );
-          return newBalance;
-        });
+        updateBalance(balance + currentBet);
       } else {
         // Dealer wins
         console.log(`Dealer won - player loses bet of ${currentBet}`);
@@ -801,28 +893,116 @@ export const BlackjackProvider: React.FC<BlackjackProviderProps> = ({
 
   // Update leaderboard when game ends
   useEffect(() => {
-    const updateLeaderboard = async () => {
-      if (gameStatus === "complete" && playerName && result !== null) {
+    const updateLeaderboardData = async () => {
+      // Skip leaderboard update for guest users - check both the prop and localStorage
+      const localStorageGuest =
+        typeof window !== "undefined" &&
+        Boolean(localStorage.getItem("guestMode"));
+
+      // Use either the prop or localStorage to determine guest status
+      const userIsGuest = isGuest || localStorageGuest;
+
+      console.log("Debug - Guest status check:", {
+        isGuestProp: isGuest,
+        localStorageGuest,
+        finalIsGuest: userIsGuest,
+      });
+
+      if (gameStatus === "complete" && result !== null) {
         try {
-          await fetch("/api/leaderboard", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              playerName,
-              score: balance,
-              highestWin: result === "player" ? currentBet : 0,
-            }),
-          });
+          // Skip API calls for guest users
+          if (userIsGuest) {
+            console.log(
+              "Guest user - skipping leaderboard and balance updates"
+            );
+            return;
+          }
+
+          // Calculate the payout amount based on the result
+          let payoutAmount = 0;
+          if (result === "player") {
+            payoutAmount = hasBlackjack
+              ? Math.floor(currentBet * 1.5)
+              : currentBet;
+          } else if (result === "push") {
+            payoutAmount = currentBet; // Return the bet for a push
+          }
+
+          // Prepare data for leaderboard update
+          const leaderboardData = {
+            playerName: playerName,
+            score: balance,
+            highestWin:
+              result === "player" ? Math.max(currentBet, payoutAmount) : 0,
+            result:
+              result === "player"
+                ? "win"
+                : result === "dealer"
+                ? "loss"
+                : "push",
+            currentBet,
+            payout: payoutAmount,
+            playerCards: playerCards.map((card) => `${card.rank}${card.suit}`),
+            dealerCards: dealerCards.map((card) => `${card.rank}${card.suit}`),
+          };
+
+          console.log(
+            "Updating leaderboard with server action:",
+            leaderboardData
+          );
+
+          // Use server action to update leaderboard
+          const leaderboardResult = await updateLeaderboard(leaderboardData);
+
+          if (!leaderboardResult.success) {
+            console.error(
+              "Leaderboard update failed:",
+              leaderboardResult.error
+            );
+          } else {
+            console.log("Leaderboard updated successfully");
+          }
+
+          // Also update user balance directly - only for authenticated users
+          if (userId && !userIsGuest) {
+            try {
+              console.log(`Debug - Attempting to update balance in database:`);
+              console.log(`- userId: ${userId}`);
+              console.log(`- isGuest: ${userIsGuest}`);
+              console.log(
+                `- balance value: ${balance} (type: ${typeof balance})`
+              );
+
+              const balanceResult = await updateUserBalance(userId, balance);
+
+              if (!balanceResult.success) {
+                console.error("Balance update failed:", balanceResult.error);
+              } else {
+                console.log("Balance updated successfully");
+              }
+            } catch (error) {
+              console.error("Error updating balance:", error);
+            }
+          }
         } catch (error) {
-          console.error("Failed to update leaderboard:", error);
+          console.error("Error updating leaderboard:", error);
         }
       }
     };
 
-    updateLeaderboard();
-  }, [gameStatus, result, balance, currentBet, playerName]);
+    updateLeaderboardData();
+  }, [
+    gameStatus,
+    result,
+    balance,
+    currentBet,
+    playerName,
+    playerCards,
+    dealerCards,
+    hasBlackjack,
+    isGuest,
+    userId,
+  ]);
 
   // Save player name to localStorage
   useEffect(() => {
