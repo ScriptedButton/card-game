@@ -47,12 +47,12 @@ export default function AboutPage() {
               points, whichever is better for your hand.
             </li>
             <li>
-              Players can &quot;Hit&quot; to draw additional cards or
-              &quot;Stand&quot; to keep their current hand.
+              Players can "Hit" to draw additional cards or "Stand" to keep
+              their current hand.
             </li>
             <li>
-              If a player&apos;s hand exceeds 21 points, they &quot;bust&quot;
-              and lose the round.
+              If a player's hand exceeds 21 points, they "bust" and lose the
+              round.
             </li>
             <li>
               After the player stands, the dealer reveals their face-down card
@@ -63,12 +63,12 @@ export default function AboutPage() {
               total wins.
             </li>
             <li>
-              A &quot;Blackjack&quot; (an Ace with a 10, Jack, Queen, or King)
-              pays 3:2 on the player&apos;s bet.
+              A "Blackjack" (an Ace with a 10, Jack, Queen, or King) pays 3:2 on
+              the player's bet.
             </li>
             <li>
-              If both the player and dealer have the same point total, it&apos;s
-              a &quot;push&quot; (tie) and the bet is returned.
+              If both the player and dealer have the same point total, it's a
+              "push" (tie) and the bet is returned.
             </li>
           </ul>
 

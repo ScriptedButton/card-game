@@ -3,16 +3,27 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useBlackjack } from "@/lib/context/BlackjackContext";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import PlayingCard from "@/components/cards/PlayingCard";
 import LoadingIndicator, {
   LoadingStage as LoadingIndicatorStage,
 } from "@/components/LoadingIndicator";
 import Link from "next/link";
-import { AlertCircle, RefreshCw, XCircle } from "lucide-react";
+import {
+  AlertCircle,
+  RefreshCw,
+  XCircle,
+  Bug,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import GameResult, { ResultType } from "@/components/GameResult";
+import { Card as PlayingCardType } from "@/lib/services/cardApi";
 import { isBust } from "@/lib/utils/blackjackUtils";
 
 // Define types needed for the component
+type GameStatus = "idle" | "dealing" | "playerTurn" | "dealerTurn" | "complete";
 type GameResult = "player" | "dealer" | "push" | null;
 
 // Add a helper function to convert GameResult to ResultType
@@ -134,7 +145,7 @@ function ConfettiCelebration() {
 }
 
 export default function GamePage() {
-  // Re-add client-side detection state
+  // Add client-side detection state
   const [isClient, setIsClient] = useState(false);
 
   const {
@@ -160,9 +171,21 @@ export default function GamePage() {
   } = useBlackjack();
 
   const [betAmount, setBetAmount] = useState<number>(10);
+  const [dealerTimer, setDealerTimer] = useState<number>(0);
+  const [showDebug, setShowDebug] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
   const logsRef = useRef<HTMLDivElement>(null);
   const [showGameResult, setShowGameResult] = useState(false);
+  // Game history to preserve completed hands
+  const [gameHistory, setGameHistory] = useState<{
+    playerCards: PlayingCardType[];
+    dealerCards: PlayingCardType[];
+    result: typeof result;
+    playerScore: number;
+    dealerScore: number;
+    hasBlackjack: boolean;
+    currentBet: number;
+  } | null>(null);
 
   // Add refs at the top level for console methods
   const originalLogRef = useRef<typeof console.log>(console.log);
@@ -172,17 +195,18 @@ export default function GamePage() {
   // Add a new state to track mouse position for ambient lighting
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
-  // Set up client-side detection
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
   // Handle mouse move for ambient lighting effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     setMousePosition({
       x: e.clientX,
       y: e.clientY,
     });
+  };
+
+  // Handle bet change
+  const handleBetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value, 10);
+    setBetAmount(isNaN(value) ? 10 : value);
   };
 
   // Handle starting a new game
@@ -219,7 +243,7 @@ export default function GamePage() {
     originalWarnRef.current = console.warn;
 
     // Use useCallback to memoize the console method overrides
-    const logFunction = (...args: unknown[]) => {
+    const logFunction = (...args: any[]) => {
       originalLogRef.current(...args);
       const message = args
         .map((arg) =>
@@ -233,7 +257,7 @@ export default function GamePage() {
       }, 0);
     };
 
-    const errorFunction = (...args: unknown[]) => {
+    const errorFunction = (...args: any[]) => {
       originalErrorRef.current(...args);
       const message = args
         .map((arg) =>
@@ -247,7 +271,7 @@ export default function GamePage() {
       }, 0);
     };
 
-    const warnFunction = (...args: unknown[]) => {
+    const warnFunction = (...args: any[]) => {
       originalWarnRef.current(...args);
       const message = args
         .map((arg) =>
@@ -279,7 +303,22 @@ export default function GamePage() {
     }
   }, [logs]);
 
-  // Show game result when game ends
+  // Reset timer when dealer is not playing
+  useEffect(() => {
+    if (gameStatus !== "dealerTurn") {
+      setDealerTimer(0);
+      return;
+    }
+
+    // Start a timer when dealer is playing to show how long it's taking
+    const interval = setInterval(() => {
+      setDealerTimer((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [gameStatus]);
+
+  // Show game result when game ends and save the current game to history
   useEffect(() => {
     if (
       gameStatus === "complete" &&
@@ -295,9 +334,39 @@ export default function GamePage() {
         dealerCards: dealerCards.length,
       });
 
-      // No need to store the current game state in history since we're not using it
+      // Ensure dealer cards are fully revealed before saving to history
+      const revealedDealerCards = dealerCards.map((card) => ({ ...card }));
+
+      // Store the current game state in history - create a deep copy to prevent references
+      setGameHistory({
+        playerCards: playerCards.map((card) => ({ ...card })),
+        dealerCards: revealedDealerCards,
+        result,
+        playerScore,
+        dealerScore,
+        hasBlackjack,
+        currentBet,
+      });
+
+      console.log(
+        "Saving game to history with dealer cards:",
+        revealedDealerCards.length
+      );
 
       setShowGameResult(true);
+
+      // Hide result after 3 seconds and reset game state
+      const timer = setTimeout(() => {
+        setShowGameResult(false);
+        if (gameStatus === "complete") {
+          console.log(
+            "Game is complete, waiting for user to choose next action"
+          );
+          // We don't automatically reset - wait for the user to press Play Again
+        }
+      }, 3000);
+
+      return () => clearTimeout(timer);
     }
   }, [
     gameStatus,
@@ -307,6 +376,7 @@ export default function GamePage() {
     hasBlackjack,
     playerCards,
     dealerCards,
+    currentBet,
   ]);
 
   // Log the result type determination separately from the render function
@@ -344,24 +414,10 @@ export default function GamePage() {
   const resultType = useMemo(() => {
     if (gameStatus === "complete") {
       console.log("Computing result type once for:", result);
-
-      // Additional validation for equal scores
-      if (
-        playerScore === dealerScore &&
-        !isBust(playerCards) &&
-        !isBust(dealerCards)
-      ) {
-        console.log(
-          "EQUAL SCORES DETECTED: Forcing push result for equal scores:",
-          playerScore
-        );
-        return "push";
-      }
-
       return mapResultToResultType(result);
     }
     return undefined;
-  }, [result, gameStatus, playerScore, dealerScore, playerCards, dealerCards]);
+  }, [result, gameStatus]);
 
   // Check if the current hand should have been a win for the dealer
   useEffect(() => {
@@ -378,10 +434,341 @@ export default function GamePage() {
     }
   }, [gameStatus, dealerScore, playerScore, resultType]);
 
-  // Main render function
+  // Handle payout amount calculation based on bet and result
+  const calculatePayout = () => {
+    if (!currentBet) return 0;
+
+    // Use the memoized resultType instead of calling getResultType()
+    if (resultType === "blackjack") {
+      return currentBet * 2.5; // 3:2 payout for blackjack
+    } else if (resultType === "win") {
+      return currentBet * 2; // 1:1 payout for regular win
+    } else if (resultType === "push") {
+      return currentBet; // Return the original bet on push
+    } else {
+      return 0; // Loss - get nothing
+    }
+  };
+
+  // Remove the redundant memoization of resultType
+  const memoizedPayoutAmount = useMemo(
+    () => calculatePayout(),
+    [resultType, currentBet]
+  );
+
+  // Card animation variants
+  const cardVariants = {
+    hidden: { opacity: 0, y: 50, scale: 0.8 },
+    visible: (i: number) => ({
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: "spring",
+        stiffness: 300,
+        damping: 20,
+        delay: i * 0.1,
+      },
+    }),
+    exit: {
+      opacity: 0,
+      y: -20,
+      transition: { duration: 0.3 },
+    },
+  };
+
+  // Get loading message based on current stage
+  const getLoadingMessage = () => {
+    switch (loadingStage) {
+      case "shuffling":
+        return "Shuffling deck...";
+      case "dealing":
+        return "Dealing cards...";
+      case "playerHit":
+        return "Drawing card...";
+      case "dealerPlay":
+        return `Dealer is playing... (${dealerTimer}s)`;
+      case "doubleDown":
+        return "Doubling down...";
+      default:
+        return "Loading...";
+    }
+  };
+
+  // Handle page reload button
+  const handleReload = () => {
+    window.location.reload();
+  };
+
+  // Handle restarting the game when errors occur
+  const handleRestartGame = () => {
+    console.log("Restarting game after error");
+    dismissError();
+    // Reset to idle state
+    setShowGameResult(false);
+    setBetAmount(10);
+    handleChipClick(10);
+  };
+
+  // Explicitly reset the game state to show chips
+  const handlePlayAgain = () => {
+    console.log("Playing again, resetting to idle state");
+    setShowGameResult(false);
+    setBetAmount(10);
+
+    // Keep the game history data until a new game starts
+    // This ensures cards remain visible during transition
+
+    // Clear the game history
+    setGameHistory(null);
+
+    // Reset the game to idle state through context
+    resetGame(); // Use the new resetGame function
+
+    // Don't automatically start a new game - let the player choose their bet first
+    console.log("Game reset to idle state - player can now select a bet");
+  };
+
+  // Create a special component just for rendering cards that won't disappear
+  const StableCards = ({
+    cards,
+    prefix,
+    isDealer = false,
+    isWinningHand = false,
+  }: {
+    cards: PlayingCardType[];
+    prefix: string;
+    isDealer?: boolean;
+    isWinningHand?: boolean;
+  }) => {
+    // Helper function to check if we should show the card
+    const shouldShowCard = (index: number): boolean => {
+      // If not dealer cards, always show
+      if (!isDealer) return true;
+
+      // If first dealer card, always show
+      if (index === 0) return true;
+
+      // Show all cards during dealer turn or when game is complete
+      if (["dealerTurn", "complete"].includes(gameStatus)) return true;
+
+      // If game is complete and we're showing from history
+      if (gameHistory && gameStatus === "complete") return true;
+
+      // Otherwise hide the card
+      return false;
+    };
+
+    return (
+      <div className="flex flex-wrap gap-4 justify-center">
+        {cards.map((card, index) => (
+          <PlayingCard
+            key={`${prefix}-${card.suit}-${card.rank}-${index}`}
+            card={shouldShowCard(index) ? card : undefined}
+            isFlipped={
+              isDealer &&
+              index !== 0 &&
+              !["dealerTurn", "complete"].includes(gameStatus)
+            }
+            animationDelay={index * 0.2 + (isDealer ? 0 : 0.3)}
+            isNew={
+              gameStatus === "dealing" ||
+              (gameStatus === "dealerTurn" &&
+                index === cards.length - 1 &&
+                cards.length > 2)
+            }
+            isWinningHand={isWinningHand}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // Render the dealer area with animations
+  const renderDealerArea = () => {
+    // Use cards from game history if available and game is complete
+    const cardsToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.dealerCards
+        : dealerCards;
+
+    // Use score from game history if available and game is complete
+    const scoreToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.dealerScore
+        : dealerScore;
+
+    // Determine what to show for score
+    const displayedScore =
+      gameStatus === "dealerTurn" || gameStatus === "complete"
+        ? scoreToDisplay
+        : cardsToDisplay.length > 0
+        ? "?"
+        : "0";
+
+    return (
+      <motion.div
+        className="flex flex-col items-center"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <h2 className="text-xl text-yellow-300 font-semibold mb-1">Dealer</h2>
+        <div className="flex justify-center mb-2">
+          <motion.span
+            className="text-lg text-white bg-black/50 px-3 py-1 rounded-full"
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            {displayedScore}
+          </motion.span>
+        </div>
+        <StableCards
+          cards={cardsToDisplay}
+          prefix="dealer"
+          isDealer={true}
+          isWinningHand={gameStatus === "complete" && result === "dealer"}
+        />
+      </motion.div>
+    );
+  };
+
+  // Render the player area with animations
+  const renderPlayerArea = () => {
+    // Use cards from game history if available and game is complete
+    const cardsToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.playerCards
+        : playerCards;
+
+    // Use score from game history if available and game is complete
+    const scoreToDisplay =
+      gameStatus === "complete" && gameHistory
+        ? gameHistory.playerScore
+        : playerScore;
+
+    return (
+      <motion.div
+        className="flex flex-col items-center"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <h2 className="text-xl text-yellow-300 font-semibold mb-1">Player</h2>
+        <div className="flex justify-center mb-2">
+          <motion.span
+            className="text-lg text-white bg-black/50 px-3 py-1 rounded-full"
+            initial={{ scale: 0.9 }}
+            animate={{
+              scale: 1,
+              backgroundColor:
+                scoreToDisplay > 21
+                  ? "rgba(220, 38, 38, 0.7)"
+                  : "rgba(0, 0, 0, 0.5)",
+            }}
+            transition={{ duration: 0.3 }}
+          >
+            {scoreToDisplay}
+          </motion.span>
+        </div>
+        <div className="mb-6">
+          <StableCards
+            cards={cardsToDisplay}
+            prefix="player"
+            isDealer={false}
+            isWinningHand={gameStatus === "complete" && result === "player"}
+          />
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Render game controls with animations
+  const renderGameControls = () => {
+    return (
+      <motion.div
+        className="flex gap-3 justify-center mt-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+      >
+        {gameStatus === "playerTurn" && (
+          <>
+            <motion.button
+              className="bg-gradient-to-r from-green-600 to-green-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-green-500/20"
+              onClick={hit}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Hit
+            </motion.button>
+            <motion.button
+              className="bg-gradient-to-r from-red-600 to-red-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-red-500/20"
+              onClick={stand}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Stand
+            </motion.button>
+            {playerCards.length === 2 && balance >= currentBet && (
+              <motion.button
+                className="bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-blue-500/20"
+                onClick={doubleDown}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Double Down
+              </motion.button>
+            )}
+          </>
+        )}
+        {gameStatus === "complete" && (
+          <motion.button
+            className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white font-medium py-2 px-6 rounded-lg shadow-lg hover:shadow-yellow-500/20"
+            onClick={handlePlayAgain}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 400, damping: 10 }}
+          >
+            Play Again
+          </motion.button>
+        )}
+      </motion.div>
+    );
+  };
+
+  // Debug logging for game status changes
+  useEffect(() => {
+    console.log(`Game status changed to: ${gameStatus}`);
+
+    if (gameStatus === "idle") {
+      console.log("Game is idle - chips should be visible now");
+    } else if (gameStatus === "complete") {
+      console.log("Game complete - cards should remain visible");
+      // Log if we have game history to confirm preservation
+      if (gameHistory) {
+        console.log("Game history is preserved:", {
+          playerCards: gameHistory.playerCards.length,
+          dealerCards: gameHistory.dealerCards.length,
+          result: gameHistory.result,
+        });
+      } else {
+        console.warn("No game history available for completed game!");
+      }
+    }
+  }, [gameStatus, gameHistory]);
+
+  // Set up mouse tracking for table effects
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   return (
-    <main
-      className="flex min-h-screen flex-col items-center justify-center game-table p-4 relative"
+    <div
+      className="game-table min-h-screen flex flex-col relative"
       onMouseMove={handleMouseMove}
     >
       {/* Table edge effect */}
@@ -786,6 +1173,6 @@ export default function GamePage() {
       <div className="bg-black/40 backdrop-blur-sm p-2 flex justify-center items-center mt-4">
         <div className="text-white/50 text-xs">© 2025 Blackjack Game</div>
       </div>
-    </main>
+    </div>
   );
 }
